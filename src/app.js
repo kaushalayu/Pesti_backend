@@ -14,7 +14,7 @@ const app = express();
 // Security & Logs
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({ 
-  origin: process.env.FRONTEND_URL || 'http://localhost:5174', 
+  origin: process.env.FRONTEND_URL || 'https://pestiside-liart.vercel.app', 
   credentials: true 
 }));
 app.use(express.json({ limit: '10mb' }));
