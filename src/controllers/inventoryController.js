@@ -251,3 +251,47 @@ exports.getTransactions = catchAsync(async (req, res, next) => {
 
   res.status(200).json({ success: true, data: results });
 });
+
+// @desc    Delete a chemical (Super Admin only)
+// @route   DELETE /api/inventory/chemicals/:id
+// @access  Private (Super Admin)
+exports.deleteChemical = catchAsync(async (req, res, next) => {
+  const chemical = await Chemical.findById(req.params.id);
+
+  if (!chemical) {
+    return next(new AppError('Chemical not found', 404));
+  }
+
+  // Check if chemical is in use
+  const inventoryItems = await Inventory.find({ chemicalId: req.params.id });
+  if (inventoryItems.length > 0) {
+    return next(new AppError('Cannot delete chemical that is currently in use by branches or users', 400));
+  }
+
+  await Chemical.findByIdAndDelete(req.params.id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Chemical purged successfully',
+    data: null,
+  });
+});
+
+// @desc    Delete an inventory allocation (Super Admin only)
+// @route   DELETE /api/inventory/:id
+// @access  Private (Super Admin)
+exports.deleteInventory = catchAsync(async (req, res, next) => {
+  const inventoryItem = await Inventory.findById(req.params.id);
+
+  if (!inventoryItem) {
+    return next(new AppError('Inventory allocation not found', 404));
+  }
+
+  await Inventory.findByIdAndDelete(req.params.id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Inventory allocation purged successfully',
+    data: null,
+  });
+});

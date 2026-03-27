@@ -5,7 +5,9 @@ const {
   assignStock, 
   reportUsage, 
   getInventory, 
-  getTransactions 
+  getTransactions,
+  deleteChemical,
+  deleteInventory
 } = require('../controllers/inventoryController');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -24,8 +26,10 @@ router.get(['/', ''], getInventory);
 // Specific routes
 router.get('/chemicals', getChemicals);
 router.post('/chemicals', restrictTo('super_admin'), addChemical);
+router.delete('/chemicals/:id', restrictTo('super_admin'), deleteChemical);
 router.post('/assign', restrictTo('super_admin', 'branch_admin'), assignStock);
 router.post('/usage', reportUsage);
 router.get('/transactions', getTransactions);
+router.delete('/:id', restrictTo('super_admin'), deleteInventory);
 
 module.exports = router;

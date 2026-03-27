@@ -234,3 +234,30 @@ exports.exportEnquiriesCSV = catchAsync(async (req, res, next) => {
   res.setHeader('Content-type', 'text/csv');
   res.send(csvContent);
 });
+
+// @desc    Delete Enquiry
+// @route   DELETE /api/enquiries/:id
+// @access  Private (Super Admin / Branch Admin)
+exports.deleteEnquiry = catchAsync(async (req, res, next) => {
+  const enquiry = await Enquiry.findById(req.params.id);
+
+  if (!enquiry) {
+    return next(new AppError('No enquiry found with that ID', 404));
+  }
+
+  // Role-based permission check
+  if (req.user.role !== 'super_admin') {
+    // Branch admin can only delete enquiries from their branch
+    if (enquiry.branchId.toString() !== req.user.branchId.toString()) {
+      return next(new AppError('Permission Denied', 403));
+    }
+  }
+
+  await Enquiry.findByIdAndDelete(req.params.id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Enquiry purged successfully',
+    data: null,
+  });
+});

@@ -8,6 +8,7 @@ const {
   getEnquiryStats,
   exportEnquiriesPdf,
   exportEnquiriesCSV,
+  deleteEnquiry,
 } = require('../controllers/enquiryController');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -27,7 +28,8 @@ router.route('/')
 
 router.route('/:id')
   .get(getEnquiry)
-  .put(updateEnquiry); // Full structural update 
+  .put(updateEnquiry)
+  .delete(deleteEnquiry);
 
 // Status Updates via Quick Buttons in App 
 router.patch('/:id/status', updateEnquiryStatus);
