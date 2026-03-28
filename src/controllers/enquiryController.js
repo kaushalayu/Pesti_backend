@@ -251,7 +251,10 @@ exports.exportEnquiriesCSV = catchAsync(async (req, res, next) => {
   excludedFields.forEach((el) => delete queryObj[el]);
 
   if (req.user.role !== 'super_admin') {
-    queryObj.branchId = req.user.branchId;
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (branchId) {
+      queryObj.branchId = branchId;
+    }
   }
 
   const enquiries = await Enquiry.find(queryObj).populate('branchId', 'branchCode').sort('-createdAt');

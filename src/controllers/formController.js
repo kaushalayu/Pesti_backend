@@ -333,10 +333,11 @@ exports.getFormStats = catchAsync(async (req, res, next) => {
 exports.exportFormsCSV = catchAsync(async (req, res, next) => {
   const matchObj = {};
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
-    if (!req.user.branchId) {
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (!branchId) {
       return next(new AppError('Branch not assigned to user', 400));
     }
-    matchObj.branchId = req.user.branchId;
+    matchObj.branchId = branchId;
   }
 
   const forms = await ServiceForm.find(matchObj)

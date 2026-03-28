@@ -64,7 +64,8 @@ const drawSection = (doc, y, title, data) => {
   doc.font('Helvetica').fontSize(9).fillColor(DARK_COLOR);
   data.forEach(([label, value]) => {
     if (value && value !== 'undefined' && value !== 'null' && value !== '') {
-      doc.text(`${label}:`, 50, y, { continued: true, width: 120 });
+      const labelStr = `${label}:`;
+      doc.text(labelStr, 50, y, { width: 120 });
       doc.text(String(value), 170, y, { width: 380 });
       y += 14;
     }
@@ -86,7 +87,7 @@ const drawTwoColumnSection = (doc, y, title, leftData, rightData) => {
   
   leftData.forEach(([label, value]) => {
     if (value && value !== 'undefined' && value !== 'null' && value !== '') {
-      doc.text(`${label}:`, 50, leftY, { continued: true, width: 100 });
+      doc.text(`${label}:`, 50, leftY, { width: 100 });
       doc.text(String(value), 150, leftY, { width: 200 });
       leftY += 14;
     }
@@ -94,7 +95,7 @@ const drawTwoColumnSection = (doc, y, title, leftData, rightData) => {
   
   rightData.forEach(([label, value]) => {
     if (value && value !== 'undefined' && value !== 'null' && value !== '') {
-      doc.text(`${label}:`, 310, rightY, { continued: true, width: 100 });
+      doc.text(`${label}:`, 310, rightY, { width: 100 });
       doc.text(String(value), 410, rightY, { width: 140 });
       rightY += 14;
     }
