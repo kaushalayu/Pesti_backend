@@ -237,7 +237,23 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
     console.log('Form customer:', form.customer?.name);
     console.log('Form branch:', form.branchId?.branchName);
     
-    const pdfBuffer = await generateJobCardPdf(form);
+    // Ensure required fields have defaults
+    const safeForm = {
+      ...form.toObject ? form.toObject() : form,
+      customer: form.customer || {},
+      branchId: form.branchId || { branchName: 'N/A', city: 'N/A' },
+      employeeId: form.employeeId || { name: 'N/A' },
+      billing: form.billing || { total: 0, advance: 0, due: 0, discount: 0, paymentMode: 'N/A' },
+      schedule: form.schedule || { type: 'N/A', date: '', time: '' },
+      premises: form.premises || {},
+      contract: form.contract || {},
+      amcServices: form.amcServices || [],
+      serviceCategory: form.serviceCategory || 'N/A',
+      status: form.status || 'N/A',
+      createdAt: form.createdAt || new Date()
+    };
+    
+    const pdfBuffer = await generateJobCardPdf(safeForm);
     
     if (!pdfBuffer || pdfBuffer.length === 0) {
       throw new Error('PDF buffer is empty');
@@ -294,6 +310,9 @@ exports.getFormStats = catchAsync(async (req, res, next) => {
 exports.exportFormsCSV = catchAsync(async (req, res, next) => {
   const matchObj = {};
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
+    if (!req.user.branchId) {
+      return next(new AppError('Branch not assigned to user', 400));
+    }
     matchObj.branchId = req.user.branchId;
   }
 

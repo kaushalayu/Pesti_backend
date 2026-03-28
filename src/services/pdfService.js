@@ -8,7 +8,9 @@ const getLogo = () => {
       path.join(__dirname, '../../pest/public/logo.jpg'),
       path.join(__dirname, '../../../pest/public/logo.jpg'),
       path.join(process.cwd(), 'pest/public/logo.jpg'),
-      path.join(process.cwd(), 'public/logo.jpg')
+      path.join(process.cwd(), 'public/logo.jpg'),
+      path.join(process.cwd(), '../pest/dist/logo.jpg'),
+      '/app/pest/dist/logo.jpg'
     ];
     
     for (const logoPath of possiblePaths) {
@@ -162,6 +164,11 @@ exports.generateJobCardPdf = async (formDoc) => {
     try {
       console.log('Generating PDF for form:', formDoc.orderNo, 'Customer:', formDoc.customer?.name);
       
+      // Validate formDoc
+      if (!formDoc) {
+        return reject(new Error('Form data is missing'));
+      }
+      
       const doc = new PDFDocument({ 
         size: 'A4',
         margin: 40,
@@ -174,7 +181,10 @@ exports.generateJobCardPdf = async (formDoc) => {
         console.log('PDF generated successfully, buffer size:', Buffer.concat(buffers).length);
         resolve(Buffer.concat(buffers));
       });
-      doc.on('error', reject);
+      doc.on('error', (err) => {
+        console.log('PDF doc error:', err.message);
+        reject(err);
+      });
 
       let y = drawHeader(doc, 'SERVICE REPORT');
 
