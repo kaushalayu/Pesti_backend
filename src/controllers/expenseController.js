@@ -30,7 +30,10 @@ exports.getExpenses = catchAsync(async (req, res, next) => {
   if (req.user.role === 'super_admin') {
     // See all
   } else if (req.user.role === 'branch_admin') {
-    filter.branchId = req.user.branchId;
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (branchId) {
+      filter.branchId = branchId;
+    }
   } else {
     // Technician / Sales / Office — only own expenses
     filter.employeeId = req.user._id;
@@ -121,7 +124,9 @@ exports.updateExpenseStatus = catchAsync(async (req, res, next) => {
   const expense = await Expense.findById(req.params.id);
   if (!expense) return next(new AppError('Expense not found', 404));
 
-  if (req.user.role === 'branch_admin' && expense.branchId.toString() !== req.user.branchId.toString()) {
+  const expBranchId = expense.branchId?.toString();
+  const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+  if (req.user.role === 'branch_admin' && expBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
 

@@ -27,7 +27,10 @@ exports.getAMCs = catchAsync(async (req, res, next) => {
   excludedFields.forEach((el) => delete queryObj[el]);
 
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
-    queryObj.branchId = req.user.branchId;
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (branchId) {
+      queryObj.branchId = branchId;
+    }
   } else if (req.user.role === 'technician' || req.user.role === 'sales') {
     queryObj.employeeId = req.user._id;
   }
@@ -63,7 +66,9 @@ exports.getAMC = catchAsync(async (req, res, next) => {
     return next(new AppError('AMC Contract not found', 404));
   }
 
-  if (req.user.role !== 'super_admin' && amc.branchId._id.toString() !== req.user.branchId.toString()) {
+  const amcBranchId = amc.branchId?._id?.toString() || amc.branchId?.toString();
+  const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+  if (req.user.role !== 'super_admin' && amcBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
 
@@ -77,7 +82,9 @@ exports.updateAMC = catchAsync(async (req, res, next) => {
     return next(new AppError('AMC Contract not found', 404));
   }
 
-  if (req.user.role !== 'super_admin' && amc.branchId.toString() !== req.user.branchId.toString()) {
+  const amcBranchId = amc.branchId?.toString();
+  const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+  if (req.user.role !== 'super_admin' && amcBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
 

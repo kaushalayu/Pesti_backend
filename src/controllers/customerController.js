@@ -26,7 +26,10 @@ exports.getCustomers = catchAsync(async (req, res, next) => {
   excludedFields.forEach((el) => delete queryObj[el]);
 
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
-    queryObj.branchId = req.user.branchId;
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (branchId) {
+      queryObj.branchId = branchId;
+    }
   } else if (req.user.role === 'technician' || req.user.role === 'sales') {
     queryObj._id = { $in: [] };
   }
@@ -58,7 +61,10 @@ exports.getCustomer = catchAsync(async (req, res, next) => {
     return next(new AppError('Customer not found', 404));
   }
 
-  if (req.user.role !== 'super_admin' && customer.branchId._id.toString() !== req.user.branchId.toString()) {
+  const custBranchId = customer.branchId?._id?.toString() || customer.branchId?.toString();
+  const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+  
+  if (req.user.role !== 'super_admin' && custBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
 
@@ -83,7 +89,10 @@ exports.updateCustomer = catchAsync(async (req, res, next) => {
     return next(new AppError('Customer not found', 404));
   }
 
-  if (req.user.role !== 'super_admin' && customer.branchId.toString() !== req.user.branchId.toString()) {
+  const custBranchId = customer.branchId?.toString();
+  const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+  
+  if (req.user.role !== 'super_admin' && custBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
 

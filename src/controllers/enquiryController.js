@@ -37,7 +37,10 @@ exports.getEnquiries = catchAsync(async (req, res, next) => {
 
   // Role Filtering
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
-    queryObj.branchId = req.user.branchId;
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (branchId) {
+      queryObj.branchId = branchId;
+    }
   } else if (req.user.role === 'technician' || req.user.role === 'sales') {
     // Technicians/sales explicitly see their own leads logically unless assigned.
     queryObj.addedBy = req.user._id;
@@ -85,7 +88,9 @@ exports.getEnquiry = catchAsync(async (req, res, next) => {
 
   // Role validation
   if (req.user.role !== 'super_admin') {
-    if (enquiry.branchId._id.toString() !== req.user.branchId.toString()) {
+    const enqBranchId = enquiry.branchId?._id?.toString() || enquiry.branchId?.toString();
+    const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (enqBranchId !== userBranchId) {
       return next(new AppError('Permission Denied', 403));
     }
   }
@@ -112,7 +117,9 @@ exports.updateEnquiry = catchAsync(async (req, res, next) => {
   }
 
   // Branch isolation constraint
-  if (req.user.role !== 'super_admin' && enquiry.branchId.toString() !== req.user.branchId.toString()) {
+  const enqBranchId = enquiry.branchId?.toString();
+  const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+  if (req.user.role !== 'super_admin' && enqBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
 
@@ -283,7 +290,9 @@ exports.deleteEnquiry = catchAsync(async (req, res, next) => {
   // Role-based permission check
   if (req.user.role !== 'super_admin') {
     // Branch admin can only delete enquiries from their branch
-    if (enquiry.branchId.toString() !== req.user.branchId.toString()) {
+    const enqBranchId = enquiry.branchId?.toString();
+    const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (enqBranchId !== userBranchId) {
       return next(new AppError('Permission Denied', 403));
     }
   }

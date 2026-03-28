@@ -57,7 +57,10 @@ exports.getReceipts = catchAsync(async (req, res, next) => {
 
   // Role Based Filtering
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
-    queryObj.branchId = req.user.branchId;
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (branchId) {
+      queryObj.branchId = branchId;
+    }
   } else if (req.user.role === 'technician' || req.user.role === 'sales') {
     queryObj.employeeId = req.user._id;
   }
@@ -104,10 +107,12 @@ exports.getReceipt = catchAsync(async (req, res, next) => {
 
   // Security check: restrict access to their branch/own data
   if (req.user.role !== 'super_admin') {
-    if (receipt.branchId._id.toString() !== req.user.branchId.toString()) {
+    const recBranchId = receipt.branchId?._id?.toString() || receipt.branchId?.toString();
+    const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (recBranchId !== userBranchId) {
       return next(new AppError('Permission Denied', 403));
     }
-    if ((req.user.role === 'technician' || req.user.role === 'sales') && receipt.employeeId._id.toString() !== req.user._id.toString()) {
+    if ((req.user.role === 'technician' || req.user.role === 'sales') && receipt.employeeId?._id?.toString() !== req.user._id.toString()) {
       return next(new AppError('Access Denied.', 403));
     }
   }
@@ -134,7 +139,9 @@ exports.updateReceipt = catchAsync(async (req, res, next) => {
   }
 
   // Basic security check
-  if (req.user.role === 'branch_admin' && receipt.branchId.toString() !== req.user.branchId.toString()) {
+  const recBranchId = receipt.branchId?.toString();
+  const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+  if (req.user.role === 'branch_admin' && recBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
 

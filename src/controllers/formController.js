@@ -42,7 +42,10 @@ exports.getForms = catchAsync(async (req, res, next) => {
   // Role Based Filtering
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
     // Branch admins/office can see all forms for their branch
-    queryObj.branchId = req.user.branchId;
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (branchId) {
+      queryObj.branchId = branchId;
+    }
   } else if (req.user.role === 'technician' || req.user.role === 'sales') {
     // Technicians/Sales only see their own forms
     queryObj.employeeId = req.user._id;
@@ -87,11 +90,14 @@ exports.getForm = catchAsync(async (req, res, next) => {
   }
 
   // Role Checks
+  const formBranchId = form.branchId?._id?.toString() || form.branchId?.toString();
+  const userBranchId = req.user.branchId?.toString() || req.user.branchId;
+  
   if (req.user.role !== 'super_admin') {
-    if (form.branchId._id.toString() !== req.user.branchId.toString()) {
+    if (formBranchId !== userBranchId) {
       return next(new AppError('Permission Denied', 403));
     }
-    if ((req.user.role === 'technician' || req.user.role === 'sales') && form.employeeId._id.toString() !== req.user._id.toString()) {
+    if ((req.user.role === 'technician' || req.user.role === 'sales') && form.employeeId?._id?.toString() !== req.user._id.toString()) {
       return next(new AppError('Access Denied. You can only view your own forms.', 403));
     }
   }
@@ -118,10 +124,13 @@ exports.updateForm = catchAsync(async (req, res, next) => {
   }
 
   // Restrict updating via auth
-  if (req.user.role !== 'super_admin' && form.branchId.toString() !== req.user.branchId.toString()) {
+  const formBranchId = form.branchId?.toString();
+  const userBranchId = req.user.branchId?.toString() || req.user.branchId;
+  
+  if (req.user.role !== 'super_admin' && formBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
-  if ((req.user.role === 'technician' || req.user.role === 'sales') && form.employeeId.toString() !== req.user._id.toString()) {
+  if ((req.user.role === 'technician' || req.user.role === 'sales') && form.employeeId?.toString() !== req.user._id.toString()) {
     return next(new AppError('Permission Denied', 403));
   }
 
@@ -219,6 +228,14 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
 
   if (!form) {
     return next(new AppError('No service form found with that ID', 404));
+  }
+
+  // Role-based permission check
+  const formBranchId = form.branchId?._id?.toString() || form.branchId?.toString();
+  const userBranchId = req.user.branchId?.toString() || req.user.branchId;
+  
+  if (req.user.role !== 'super_admin' && formBranchId !== userBranchId) {
+    return next(new AppError('Permission Denied', 403));
   }
 
   if (!form.customer && form.customerId) {
