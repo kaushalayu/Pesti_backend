@@ -15,7 +15,7 @@ const router = express.Router();
 // Require login for all receipt routes
 router.use(protect);
 
-router.get('/stats', restrictTo('super_admin', 'branch_admin'), getReceiptStats);
+router.get('/stats', getReceiptStats);
 
 router.route('/')
   .post(createReceipt)
