@@ -89,25 +89,24 @@ exports.getForm = catchAsync(async (req, res, next) => {
     return next(new AppError('No service form found with that ID', 404));
   }
 
-  // Role Checks
-  const getBranchIdStr = (val) => {
-    if (!val) return null;
-    if (typeof val === 'string') return val;
-    if (val._id) return val._id.toString();
-    return val.toString();
-  };
+  // DEBUG: Log what's happening
+  console.log('=== GET FORM DEBUG ===');
+  console.log('Form branchId:', form.branchId);
+  console.log('Form branchId type:', typeof form.branchId);
+  console.log('User branchId:', req.user.branchId);
+  console.log('User branchId type:', typeof req.user.branchId);
+  console.log('User role:', req.user.role);
   
-  const formBranchId = getBranchIdStr(form.branchId);
-  const userBranchId = getBranchIdStr(req.user.branchId);
-  
-  if (req.user.role !== 'super_admin') {
-    if (formBranchId && userBranchId && formBranchId !== userBranchId) {
-      return next(new AppError('Permission Denied', 403));
-    }
-    if ((req.user.role === 'technician' || req.user.role === 'sales') && form.employeeId?._id?.toString() !== req.user._id.toString()) {
+  // Role Checks - Allow branch_admin to see ALL forms in their branch
+  // Branch admin can see all forms in their branch, no restriction
+  if (req.user.role === 'technician' || req.user.role === 'sales') {
+    // Only allow technicians/sales to see their own forms
+    const formEmployeeId = form.employeeId?._id?.toString() || form.employeeId?.toString();
+    if (formEmployeeId !== req.user._id.toString()) {
       return next(new AppError('Access Denied. You can only view your own forms.', 403));
     }
   }
+  // Branch admin can see all forms in their branch - NO BLOCKING
 
   res.status(200).json({
     success: true,
@@ -130,23 +129,14 @@ exports.updateForm = catchAsync(async (req, res, next) => {
     return next(new AppError(`Cannot edit a form in ${form.status} status`, 400));
   }
 
-  // Restrict updating via auth
-  const getBranchIdStr = (val) => {
-    if (!val) return null;
-    if (typeof val === 'string') return val;
-    if (val._id) return val._id.toString();
-    return val.toString();
-  };
-  
-  const formBranchId = getBranchIdStr(form.branchId);
-  const userBranchId = getBranchIdStr(req.user.branchId);
-  
-  if (req.user.role !== 'super_admin' && formBranchId && userBranchId && formBranchId !== userBranchId) {
-    return next(new AppError('Permission Denied', 403));
+  // Technician/Sales can only edit their own forms
+  if (req.user.role === 'technician' || req.user.role === 'sales') {
+    const formEmployeeId = form.employeeId?.toString();
+    if (formEmployeeId !== req.user._id.toString()) {
+      return next(new AppError('Permission Denied - Can only edit your own forms', 403));
+    }
   }
-  if ((req.user.role === 'technician' || req.user.role === 'sales') && form.employeeId?.toString() !== req.user._id.toString()) {
-    return next(new AppError('Permission Denied', 403));
-  }
+  // Branch admin can edit any form in their branch - ALLOWED
 
   // Prevent changing ownership properties
   delete req.body.employeeId;
@@ -244,22 +234,15 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
     return next(new AppError('No service form found with that ID', 404));
   }
 
-  // Role-based permission check - more robust
-  const getBranchIdStr = (val) => {
-    if (!val) return null;
-    if (typeof val === 'string') return val;
-    if (val._id) return val._id.toString();
-    return val.toString();
-  };
-  
-  const formBranchId = getBranchIdStr(form.branchId);
-  const userBranchId = getBranchIdStr(req.user.branchId);
-  
-  console.log('PDF - Form branch:', formBranchId, 'User branch:', userBranchId, 'Role:', req.user.role);
-  
-  if (req.user.role !== 'super_admin' && formBranchId && userBranchId && formBranchId !== userBranchId) {
-    return next(new AppError('Permission Denied - Branch mismatch', 403));
+  // Role-based permission check
+  // Branch admin can download PDF for any form in their branch
+  if (req.user.role === 'technician' || req.user.role === 'sales') {
+    const formEmployeeId = form.employeeId?._id?.toString() || form.employeeId?.toString();
+    if (formEmployeeId !== req.user._id.toString()) {
+      return next(new AppError('Permission Denied - Can only download your own forms', 403));
+    }
   }
+  // Branch admin can download all forms in their branch - ALLOWED
 
   if (!form.customer && form.customerId) {
     form.customer = {
