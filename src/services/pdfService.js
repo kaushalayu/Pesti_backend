@@ -2,8 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 
-const LOGO_PATH = path.join(__dirname, '../../public/logo.jpg');
-const ICON_PATH = path.join(__dirname, '../../public/icons.svg');
+const LOGO_PATH = path.join(__dirname, '../../../pest/public/logo.jpg');
 
 const getLogo = () => {
   try {

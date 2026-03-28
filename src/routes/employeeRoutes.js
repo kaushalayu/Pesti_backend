@@ -17,7 +17,8 @@ const router = express.Router();
 router.use(protect);
 
 // Only Super Admins and Branch Admins can manage employees
-router.use(restrictTo('super_admin', 'branch_admin'));
+// Office can also view employees for inventory assignment
+router.use(restrictTo('super_admin', 'branch_admin', 'office'));
 
 router
   .route('/')

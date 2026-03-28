@@ -9,13 +9,11 @@ const { protect, restrictTo } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Strict: Only Super Admins and Branch Admins can view analytical dashboards
 router.use(protect);
-router.use(restrictTo('super_admin', 'branch_admin'));
 
-router.get('/stats', getOverviewStats);
-router.get('/revenue', getRevenueAnalytics);
-router.get('/enquiry-funnel', getEnquiryFunnel);
-router.get('/activity', getRecentActivity);
+router.get('/stats', restrictTo('super_admin', 'branch_admin'), getOverviewStats);
+router.get('/revenue', restrictTo('super_admin', 'branch_admin'), getRevenueAnalytics);
+router.get('/enquiry-funnel', restrictTo('super_admin', 'branch_admin'), getEnquiryFunnel);
+router.get('/activity', restrictTo('super_admin', 'branch_admin'), getRecentActivity);
 
 module.exports = router;

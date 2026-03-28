@@ -13,7 +13,7 @@ const router = express.Router();
 router.use(protect);
 
 // Stats route must come BEFORE /:id routes
-router.get('/stats', getExpenseStats);
+router.get('/stats', restrictTo('super_admin', 'branch_admin'), getExpenseStats);
 
 router.route('/')
   .get(getExpenses)

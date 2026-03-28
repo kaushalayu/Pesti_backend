@@ -12,7 +12,7 @@ router.use((req, res, next) => {
 router.use(protect);
 
 // Explicitly handle BOTH with and without trailing slash for stats
-router.get('/stats', getCollectionStats);
-router.get('/stats/', getCollectionStats);
+router.get('/stats', restrictTo('super_admin', 'branch_admin'), getCollectionStats);
+router.get('/stats/', restrictTo('super_admin', 'branch_admin'), getCollectionStats);
 
 module.exports = router;
