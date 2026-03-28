@@ -2,15 +2,23 @@ const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 
-const LOGO_PATH = path.join(__dirname, '../../../pest/public/logo.jpg');
-
 const getLogo = () => {
   try {
-    if (fs.existsSync(LOGO_PATH)) {
-      return fs.readFileSync(LOGO_PATH);
+    const possiblePaths = [
+      path.join(__dirname, '../../pest/public/logo.jpg'),
+      path.join(__dirname, '../../../pest/public/logo.jpg'),
+      path.join(process.cwd(), 'pest/public/logo.jpg'),
+      path.join(process.cwd(), 'public/logo.jpg')
+    ];
+    
+    for (const logoPath of possiblePaths) {
+      if (fs.existsSync(logoPath)) {
+        const logoData = fs.readFileSync(logoPath);
+        return logoData;
+      }
     }
   } catch (err) {
-    console.log('Logo not found, using text only');
+    console.log('Logo error:', err.message);
   }
   return null;
 };
@@ -152,6 +160,8 @@ const drawFooter = (doc, y) => {
 exports.generateJobCardPdf = async (formDoc) => {
   return new Promise((resolve, reject) => {
     try {
+      console.log('Generating PDF for form:', formDoc.orderNo, 'Customer:', formDoc.customer?.name);
+      
       const doc = new PDFDocument({ 
         size: 'A4',
         margin: 40,
@@ -160,14 +170,20 @@ exports.generateJobCardPdf = async (formDoc) => {
       
       const buffers = [];
       doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('end', () => {
+        console.log('PDF generated successfully, buffer size:', Buffer.concat(buffers).length);
+        resolve(Buffer.concat(buffers));
+      });
       doc.on('error', reject);
 
       let y = drawHeader(doc, 'SERVICE REPORT');
 
+      const formDate = formDoc.createdAt ? new Date(formDoc.createdAt) : new Date();
+      const dateStr = !isNaN(formDate) ? formDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+
       y = drawSection(doc, y, 'Order Information', [
         ['Order No', formDoc.orderNo || 'N/A'],
-        ['Date', new Date(formDoc.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })],
+        ['Date', dateStr],
         ['Status', formDoc.status || 'N/A'],
         ['Branch', formDoc.branchId?.branchName || formDoc.branchId?.city || 'N/A']
       ]);
@@ -202,12 +218,22 @@ exports.generateJobCardPdf = async (formDoc) => {
         ]);
       }
 
-      y = drawSection(doc, y, 'Billing Information', [
+      const billingData = [
         ['Total Amount', `Rs. ${(formDoc.billing?.total || 0).toLocaleString('en-IN')}`],
+        ['Discount', `Rs. ${(formDoc.billing?.discount || 0).toLocaleString('en-IN')}`],
         ['Advance Paid', `Rs. ${(formDoc.billing?.advance || 0).toLocaleString('en-IN')}`],
         ['Balance Due', `Rs. ${(formDoc.billing?.due || 0).toLocaleString('en-IN')}`],
         ['Payment Mode', formDoc.billing?.paymentMode || 'N/A']
-      ]);
+      ];
+      
+      if (formDoc.billing?.transactionNo) {
+        billingData.push(['Transaction No', formDoc.billing.transactionNo]);
+      }
+      if (formDoc.billing?.paymentDetail) {
+        billingData.push(['Payment Details', formDoc.billing.paymentDetail]);
+      }
+      
+      y = drawSection(doc, y, 'Billing Information', billingData);
 
       if (formDoc.contract?.contractNo) {
         y = drawSection(doc, y, 'Contract Details', [
@@ -220,8 +246,6 @@ exports.generateJobCardPdf = async (formDoc) => {
       y = drawSignatureBox(doc, y);
       y = drawFooter(doc, y);
 
-      doc.render();
-
       const range = doc.bufferedPageRange();
       for (let i = range.start; i < range.start + range.count; i++) {
         doc.switchToPage(i);
@@ -231,6 +255,7 @@ exports.generateJobCardPdf = async (formDoc) => {
 
       doc.end();
     } catch (error) {
+      console.error('PDF Generation Error:', error);
       reject(error);
     }
   });
@@ -297,8 +322,6 @@ exports.generateReceiptPdf = async (receiptDoc) => {
 
       y = drawSignatureBox(doc, y);
       y = drawFooter(doc, y);
-
-      doc.render();
 
       const range = doc.bufferedPageRange();
       for (let i = range.start; i < range.start + range.count; i++) {
@@ -377,8 +400,6 @@ exports.generateEnquiryListPdf = async (enquiries) => {
         });
         y += 14;
       });
-
-      doc.render();
 
       const range = doc.bufferedPageRange();
       for (let i = range.start; i < range.start + range.count; i++) {

@@ -5,6 +5,7 @@ const {
   getEnquiry,
   updateEnquiry,
   updateEnquiryStatus,
+  addFollowUp,
   getEnquiryStats,
   exportEnquiriesPdf,
   exportEnquiriesCSV,
@@ -33,5 +34,8 @@ router.route('/:id')
 
 // Status Updates via Quick Buttons in App 
 router.patch('/:id/status', updateEnquiryStatus);
+
+// Follow-up
+router.post('/:id/followup', addFollowUp);
 
 module.exports = router;

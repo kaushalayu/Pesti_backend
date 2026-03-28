@@ -8,6 +8,7 @@ const {
   updateFormStatus,
   downloadFormPdf,
   getFormStats,
+  exportFormsCSV,
 } = require('../controllers/formController');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -17,6 +18,7 @@ router.use(protect); // Ensure user is logged in
 
 // Stats comes first to avoid being treated as :id param
 router.get('/stats', restrictTo('super_admin', 'branch_admin'), getFormStats);
+router.get('/export', restrictTo('super_admin', 'branch_admin', 'office'), exportFormsCSV);
 
 router.route('/')
   .post(createForm) // Employees, Admins

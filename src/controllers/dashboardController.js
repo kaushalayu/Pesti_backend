@@ -219,3 +219,72 @@ exports.getRecentActivity = catchAsync(async (req, res, next) => {
     data: activity,
   });
 });
+
+// @desc    Get Employee Performance (Target vs Achievement)
+// @route   GET /api/dashboard/employee-performance
+// @access  Private (Super Admin / Branch Admin)
+exports.getEmployeePerformance = catchAsync(async (req, res, next) => {
+  const branchFilter = req.user.role === 'branch_admin' ? { branchId: req.user.branchId } : {};
+  
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const employeeStats = await User.aggregate([
+    { $match: { ...branchFilter, role: { $in: ['technician', 'sales'] } } },
+    {
+      $lookup: {
+        from: 'serviceforms',
+        localField: '_id',
+        foreignField: 'employeeId',
+        as: 'jobs'
+      }
+    },
+    {
+      $lookup: {
+        from: 'enquiries',
+        localField: '_id',
+        foreignField: 'addedBy',
+        as: 'enquiries'
+      }
+    },
+    {
+      $lookup: {
+        from: 'receipts',
+        localField: '_id',
+        foreignField: 'employeeId',
+        as: 'receipts'
+      }
+    },
+    {
+      $project: {
+        name: 1,
+        employeeId: 1,
+        role: 1,
+        branchId: 1,
+        totalJobs: { $size: '$jobs' },
+        completedJobs: {
+          $size: { $filter: { input: '$jobs', cond: { $eq: ['$$this.status', 'COMPLETED'] } } }
+        },
+        totalEnquiries: { $size: '$enquiries' },
+        convertedEnquiries: {
+          $size: { $filter: { input: '$enquiries', cond: { $eq: ['$$this.status', 'CONVERTED'] } } }
+        },
+        totalCollections: {
+          $sum: { $map: { input: '$receipts', as: 'r', in: '$$r.advancePaid' } }
+        },
+        thisMonthJobs: {
+          $size: { $filter: { input: '$jobs', cond: { $gte: ['$$this.createdAt', startOfMonth] } } }
+        },
+        thisMonthCollections: {
+          $sum: { $map: { input: { $filter: { input: '$receipts', cond: { $gte: ['$$this.createdAt', startOfMonth] } } }, as: 'r', in: '$$r.advancePaid' } }
+        }
+      }
+    },
+    { $sort: { totalJobs: -1 } }
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: employeeStats
+  });
+});

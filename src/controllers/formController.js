@@ -212,21 +212,50 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
 // @route   GET /api/forms/:id/pdf
 // @access  Private
 exports.downloadFormPdf = catchAsync(async (req, res, next) => {
-  const form = await ServiceForm.findById(req.params.id).populate('branchId', 'branchName branchCode city address phone');
+  const form = await ServiceForm.findById(req.params.id)
+    .populate('branchId', 'branchName branchCode city address phone')
+    .populate('employeeId', 'name')
+    .populate('customerId', 'name phone email address city gstNo');
 
   if (!form) {
     return next(new AppError('No service form found with that ID', 404));
   }
 
+  if (!form.customer && form.customerId) {
+    form.customer = {
+      name: form.customerId.name,
+      phone: form.customerId.phone,
+      email: form.customerId.email,
+      address: form.customerId.address,
+      city: form.customerId.city,
+      gstNo: form.customerId.gstNo
+    };
+  }
+
   try {
+    console.log('Controller: Starting PDF generation for', form.orderNo);
+    console.log('Form customer:', form.customer?.name);
+    console.log('Form branch:', form.branchId?.branchName);
+    
     const pdfBuffer = await generateJobCardPdf(form);
     
-    res.setHeader('Content-disposition', `attachment; filename=JobCard_${form.orderNo}.pdf`);
-    res.setHeader('Content-type', 'application/pdf');
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      throw new Error('PDF buffer is empty');
+    }
     
-    res.send(pdfBuffer);
+    res.setHeader('Content-disposition', `attachment; filename=JobCard_${form.orderNo || form._id}.pdf`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', pdfBuffer.length);
+    
+    console.log('Controller: Sending PDF, size:', pdfBuffer.length);
+    return res.send(pdfBuffer);
   } catch (error) {
-    return next(new AppError('Failed to generate PDF document.', 500));
+    console.error('PDF Generation Error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: `Failed to generate PDF: ${error.message}`,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -257,4 +286,51 @@ exports.getFormStats = catchAsync(async (req, res, next) => {
     success: true,
     data: stats,
   });
+});
+
+// @desc    Export Forms to CSV
+// @route   GET /api/forms/export
+// @access  Private (Super Admin / Branch Admin / Office)
+exports.exportFormsCSV = catchAsync(async (req, res, next) => {
+  const matchObj = {};
+  if (req.user.role === 'branch_admin' || req.user.role === 'office') {
+    matchObj.branchId = req.user.branchId;
+  }
+
+  const forms = await ServiceForm.find(matchObj)
+    .populate('employeeId', 'name')
+    .populate('branchId', 'branchName city')
+    .sort('-createdAt')
+    .lean();
+
+  const csvHeaders = [
+    'Order No', 'Date', 'Status', 'Branch', 'Employee', 
+    'Customer Name', 'Phone', 'City', 'Service Type',
+    'Total Amount', 'Advance', 'Due', 'Payment Mode'
+  ];
+
+  const csvRows = forms.map(form => [
+    form.orderNo || '',
+    form.createdAt ? new Date(form.createdAt).toLocaleDateString('en-IN') : '',
+    form.status || '',
+    form.branchId?.branchName || '',
+    form.employeeId?.name || '',
+    form.customer?.name || '',
+    form.customer?.phone || '',
+    form.customer?.city || '',
+    form.serviceCategory || '',
+    form.billing?.total || 0,
+    form.billing?.advance || 0,
+    form.billing?.due || 0,
+    form.billing?.paymentMode || ''
+  ]);
+
+  const csvContent = [
+    csvHeaders.join(','),
+    ...csvRows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+  ].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename=ServiceForms_${Date.now()}.csv`);
+  res.send(csvContent);
 });

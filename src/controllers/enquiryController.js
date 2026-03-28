@@ -132,7 +132,7 @@ exports.updateEnquiry = catchAsync(async (req, res, next) => {
 // @access  Private
 exports.updateEnquiryStatus = catchAsync(async (req, res, next) => {
   const { status } = req.body;
-  const validStatuses = ['NEW', 'CONTACTED', 'DEMO_SCHEDULED', 'CONVERTED', 'LOST'];
+  const validStatuses = ['NEW', 'CONTACTED', 'VISIT_DONE', 'DEMO_SCHEDULED', 'QUALIFIED', 'CONVERTED', 'LOST'];
   
   if (!validStatuses.includes(status)) {
     return next(new AppError('Invalid status provided.', 400));
@@ -145,6 +145,41 @@ exports.updateEnquiryStatus = catchAsync(async (req, res, next) => {
   }
 
   enquiry.status = status;
+  await enquiry.save();
+
+  res.status(200).json({
+    success: true,
+    data: enquiry,
+  });
+});
+
+// @desc    Add Follow-up
+// @route   POST /api/enquiries/:id/followup
+// @access  Private
+exports.addFollowUp = catchAsync(async (req, res, next) => {
+  const { nextFollowUp, notes } = req.body;
+
+  const enquiry = await Enquiry.findById(req.params.id);
+
+  if (!enquiry) {
+    return next(new AppError('No enquiry found with that ID', 404));
+  }
+
+  if (!enquiry.followUps) {
+    enquiry.followUps = [];
+  }
+
+  enquiry.followUps.push({
+    date: new Date(),
+    notes: notes || '',
+    nextFollowUp: nextFollowUp || null,
+    addedBy: req.user._id
+  });
+
+  if (nextFollowUp) {
+    enquiry.nextFollowUp = new Date(nextFollowUp);
+  }
+
   await enquiry.save();
 
   res.status(200).json({

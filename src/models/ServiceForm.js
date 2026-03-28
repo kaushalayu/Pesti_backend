@@ -21,6 +21,12 @@ const serviceFormSchema = new mongoose.Schema(
       email: { type: String },
     },
 
+    reference: {
+      type: String,
+      enum: ['Company', 'Social Media', 'Website', 'Walk-in', 'Referral', 'Google', 'Facebook', 'Justdial', 'Other'],
+      default: 'Walk-in'
+    },
+
     serviceCategory: {
       type: String,
       enum: ['Residential', 'Commercial', 'Industrial'],
@@ -66,12 +72,16 @@ const serviceFormSchema = new mongoose.Schema(
       total: { type: Number, required: true },
       discount: { type: Number, default: 0 },
       paymentDetail: { type: String },
+      transactionNo: { type: String },
+      paymentImage: { type: String },
     },
 
     contract: {
       contractNo: { type: String },
       period: { type: String },
       warranty: { type: String },
+      startDate: { type: String },
+      endDate: { type: String },
     },
 
     signatures: {

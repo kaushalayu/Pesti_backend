@@ -12,6 +12,7 @@ const inventoryRoutes = require('./inventoryRoutes');
 const expenseRoutes = require('./expenseRoutes');
 const amcRoutes = require('./amcRoutes');
 const uploadRoutes = require('./uploadRoutes');
+const serviceRateRoutes = require('./serviceRateRoutes');
 
 const router = express.Router();
 
@@ -28,5 +29,6 @@ router.use('/inventory', inventoryRoutes);
 router.use('/expenses', expenseRoutes);
 router.use('/amc', amcRoutes);
 router.use('/upload', uploadRoutes);
+router.use('/service-rates', serviceRateRoutes);
 
 module.exports = router;

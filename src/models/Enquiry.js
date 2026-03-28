@@ -37,7 +37,7 @@ const enquirySchema = new mongoose.Schema(
     
     status: {
       type: String,
-      enum: ['NEW', 'CONTACTED', 'DEMO_SCHEDULED', 'CONVERTED', 'LOST'],
+      enum: ['NEW', 'CONTACTED', 'VISIT_DONE', 'DEMO_SCHEDULED', 'QUALIFIED', 'CONVERTED', 'LOST'],
       default: 'NEW'
     },
     
@@ -48,7 +48,15 @@ const enquirySchema = new mongoose.Schema(
     },
     
     followUpDate: { type: Date },
+    nextFollowUp: { type: Date },
     notes: { type: String },
+    
+    followUps: [{
+      date: { type: Date, default: Date.now },
+      notes: { type: String },
+      nextFollowUp: { type: Date },
+      addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+    }],
     
     branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', required: true },
     addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
