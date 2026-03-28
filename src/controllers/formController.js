@@ -90,11 +90,18 @@ exports.getForm = catchAsync(async (req, res, next) => {
   }
 
   // Role Checks
-  const formBranchId = form.branchId?._id?.toString() || form.branchId?.toString();
-  const userBranchId = req.user.branchId?.toString() || req.user.branchId;
+  const getBranchIdStr = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string') return val;
+    if (val._id) return val._id.toString();
+    return val.toString();
+  };
+  
+  const formBranchId = getBranchIdStr(form.branchId);
+  const userBranchId = getBranchIdStr(req.user.branchId);
   
   if (req.user.role !== 'super_admin') {
-    if (formBranchId !== userBranchId) {
+    if (formBranchId && userBranchId && formBranchId !== userBranchId) {
       return next(new AppError('Permission Denied', 403));
     }
     if ((req.user.role === 'technician' || req.user.role === 'sales') && form.employeeId?._id?.toString() !== req.user._id.toString()) {
@@ -124,10 +131,17 @@ exports.updateForm = catchAsync(async (req, res, next) => {
   }
 
   // Restrict updating via auth
-  const formBranchId = form.branchId?.toString();
-  const userBranchId = req.user.branchId?.toString() || req.user.branchId;
+  const getBranchIdStr = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string') return val;
+    if (val._id) return val._id.toString();
+    return val.toString();
+  };
   
-  if (req.user.role !== 'super_admin' && formBranchId !== userBranchId) {
+  const formBranchId = getBranchIdStr(form.branchId);
+  const userBranchId = getBranchIdStr(req.user.branchId);
+  
+  if (req.user.role !== 'super_admin' && formBranchId && userBranchId && formBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
   if ((req.user.role === 'technician' || req.user.role === 'sales') && form.employeeId?.toString() !== req.user._id.toString()) {
@@ -230,12 +244,21 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
     return next(new AppError('No service form found with that ID', 404));
   }
 
-  // Role-based permission check
-  const formBranchId = form.branchId?._id?.toString() || form.branchId?.toString();
-  const userBranchId = req.user.branchId?.toString() || req.user.branchId;
+  // Role-based permission check - more robust
+  const getBranchIdStr = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string') return val;
+    if (val._id) return val._id.toString();
+    return val.toString();
+  };
   
-  if (req.user.role !== 'super_admin' && formBranchId !== userBranchId) {
-    return next(new AppError('Permission Denied', 403));
+  const formBranchId = getBranchIdStr(form.branchId);
+  const userBranchId = getBranchIdStr(req.user.branchId);
+  
+  console.log('PDF - Form branch:', formBranchId, 'User branch:', userBranchId, 'Role:', req.user.role);
+  
+  if (req.user.role !== 'super_admin' && formBranchId && userBranchId && formBranchId !== userBranchId) {
+    return next(new AppError('Permission Denied - Branch mismatch', 403));
   }
 
   if (!form.customer && form.customerId) {

@@ -10,15 +10,23 @@ const getLogo = () => {
       path.join(process.cwd(), 'pest/public/logo.jpg'),
       path.join(process.cwd(), 'public/logo.jpg'),
       path.join(process.cwd(), '../pest/dist/logo.jpg'),
-      '/app/pest/dist/logo.jpg'
+      path.join(process.cwd(), '../pest/public/logo.jpg'),
+      '/app/pest/dist/logo.jpg',
+      '/app/pest/public/logo.jpg'
     ];
     
     for (const logoPath of possiblePaths) {
-      if (fs.existsSync(logoPath)) {
-        const logoData = fs.readFileSync(logoPath);
-        return logoData;
+      try {
+        if (fs.existsSync(logoPath)) {
+          const logoData = fs.readFileSync(logoPath);
+          console.log('Logo found at:', logoPath);
+          return logoData;
+        }
+      } catch (e) {
+        console.log('Logo path error:', logoPath, e.message);
       }
     }
+    console.log('Logo not found in any path');
   } catch (err) {
     console.log('Logo error:', err.message);
   }
