@@ -51,8 +51,9 @@ const generateJobCardHtml = (data) => {
   const amcServices = data.amcServices || [];
   const floors = premises.floors || [];
   
-  const hasAMC = data.serviceType === 'AMC' || data.serviceType === 'BOTH';
+  const hasAMC = data.serviceType === 'AMC' || data.serviceType === 'GPC' || data.serviceType === 'BOTH';
   const hasATT = data.serviceType === 'ATT' || data.serviceType === 'BOTH';
+  const isGPC = data.serviceType === 'GPC';
   const isServicePdf = data.currentServiceNumber && data.totalServices;
   
   const areaAmount = Math.ceil((premises.totalArea || 0) * (data.ratePerSqft || 0));
@@ -699,10 +700,10 @@ const generateJobCardHtml = (data) => {
       </table>
     </div>
     
-    <!-- AMC SERVICES -->
+    <!-- AMC/GPC SERVICES -->
     ${hasAMC && amcServices.length > 0 ? `
     <div class="table-section">
-      <div class="section-title">AMC Services - Pest Control</div>
+      <div class="section-title">${isGPC ? 'GPC' : 'AMC'} Services - Pest Control</div>
       <table class="table">
         <thead>
           <tr>
@@ -727,7 +728,7 @@ const generateJobCardHtml = (data) => {
             </tr>
           `}).join('')}
           <tr class="subtotal-row">
-            <td colspan="4" style="text-align: right;">AMC Subtotal:</td>
+            <td colspan="4" style="text-align: right;">${isGPC ? 'GPC' : 'AMC'} Subtotal:</td>
             <td>${formatCurrency(areaAmount)}</td>
           </tr>
         </tbody>
@@ -911,8 +912,9 @@ const generateReceiptHtml = (data) => {
   const premises = data.premises || {};
   const pricing = data.pricing || {};
   
-  const hasAMC = data.serviceType === 'AMC' || data.serviceType === 'BOTH';
+  const hasAMC = data.serviceType === 'AMC' || data.serviceType === 'GPC' || data.serviceType === 'BOTH';
   const hasATT = data.serviceType === 'ATT' || data.serviceType === 'BOTH';
+  const isGPC = data.serviceType === 'GPC';
   
   const totalArea = data.totalArea || premises.totalArea || floors.reduce((sum, f) => sum + (f.area || 0), 0);
   const amountReceived = data.amount || data.advancePaid || data.paidAmount || 0;
