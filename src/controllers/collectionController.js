@@ -31,9 +31,9 @@ exports.getCollectionStats = catchAsync(async (req, res, next) => {
     groupBy = '$employeeId';
   }
 
-  // 1. Get Overall Collection per User
+  // 1. Get Overall Collection per User (only APPROVED receipts)
   const overallCollections = await Receipt.aggregate([
-    { $match: matchQuery },
+    { $match: { ...matchQuery, approvalStatus: 'APPROVED' } },
     {
       $group: {
         _id: groupBy,
@@ -60,11 +60,12 @@ exports.getCollectionStats = catchAsync(async (req, res, next) => {
     },
   ]);
 
-  // 2. Get Today's Collection per User
+  // 2. Get Today's Collection per User (only APPROVED receipts)
   const todayCollections = await Receipt.aggregate([
     { 
       $match: { 
         ...matchQuery, 
+        approvalStatus: 'APPROVED',
         createdAt: { $gte: startOfDay, $lte: endOfDay } 
       } 
     },

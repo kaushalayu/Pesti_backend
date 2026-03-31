@@ -7,6 +7,7 @@ const {
   submitForm,
   updateFormStatus,
   downloadFormPdf,
+  downloadServicePdf,
   getFormStats,
   exportFormsCSV,
 } = require('../controllers/formController');
@@ -32,5 +33,6 @@ router.route('/:id')
 router.post('/:id/submit', submitForm);
 router.patch('/:id/status', updateFormStatus); // E.g., moving to SCHEDULED, COMPLETED
 router.get('/:id/pdf', downloadFormPdf);
+router.get('/:id/service/:serviceIndex/pdf', downloadServicePdf);
 
 module.exports = router;

@@ -117,6 +117,44 @@ const processEmailJob = async (jobOrData) => {
       await ServiceForm.findByIdAndUpdate(data.formId, { emailSentAt: Date.now() });
       break;
 
+    case 'SERVICE_SCHEDULED':
+      const scheduledForm = await ServiceForm.findById(data.formId).populate('branchId').lean();
+      if (!scheduledForm || !scheduledForm.customer?.email) break;
+      await transporter.sendMail({
+        from: `"SafeHome Pestochem" <${process.env.EMAIL_FROM}>`,
+        to: scheduledForm.customer.email,
+        subject: `Service Scheduled - SafeHome Pestochem (${scheduledForm.orderNo})`,
+        html: `
+          <p>Dear ${scheduledForm.customer.title || ''} ${scheduledForm.customer.name},</p>
+          <p>Your pest control service has been scheduled.</p>
+          <p>Order No: <b>${scheduledForm.orderNo}</b></p>
+          <p>Service Date: <b>${scheduledForm.schedule?.date || 'To be confirmed'}</b></p>
+          <p>Branch: <b>${scheduledForm.branchId?.branchName || 'N/A'}</b></p>
+          <p>Please ensure someone is available at your premises on the scheduled date.</p>
+          <p>Regards,<br>SafeHome Pestochem India Pvt Ltd</p>
+        `,
+      });
+      break;
+
+    case 'SERVICE_COMPLETED':
+      const completedForm = await ServiceForm.findById(data.formId).populate('branchId').lean();
+      if (!completedForm || !completedForm.customer?.email) break;
+      await transporter.sendMail({
+        from: `"SafeHome Pestochem" <${process.env.EMAIL_FROM}>`,
+        to: completedForm.customer.email,
+        subject: `Service Completed - SafeHome Pestochem (${completedForm.orderNo})`,
+        html: `
+          <p>Dear ${completedForm.customer.title || ''} ${completedForm.customer.name},</p>
+          <p>Your pest control service has been successfully completed.</p>
+          <p>Order No: <b>${completedForm.orderNo}</b></p>
+          <p>Final Amount: <b>Rs. ${(completedForm.pricing?.finalAmount || completedForm.billing?.total || 0).toLocaleString('en-IN')}</b></p>
+          <p>Balance Due: <b>Rs. ${(completedForm.billing?.due || 0).toLocaleString('en-IN')}</b></p>
+          <p>Thank you for choosing SafeHome Pestochem!</p>
+          <p>Regards,<br>SafeHome Pestochem India Pvt Ltd</p>
+        `,
+      });
+      break;
+
     case 'SEND_RECEIPT':
       const receipt = await Receipt.findById(data.receiptId).populate('branchId formId').lean();
       if (!receipt?.customerEmail) break;

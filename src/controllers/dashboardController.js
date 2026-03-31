@@ -4,6 +4,7 @@ const User = require('../models/User');
 const ServiceForm = require('../models/ServiceForm');
 const Receipt = require('../models/Receipt');
 const Enquiry = require('../models/Enquiry');
+const Expense = require('../models/Expense');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
 
@@ -286,5 +287,126 @@ exports.getEmployeePerformance = catchAsync(async (req, res, next) => {
   res.status(200).json({
     success: true,
     data: employeeStats
+  });
+});
+
+// @desc    Get ALL dashboard data in ONE call (Performance optimization)
+// @route   GET /api/dashboard/combined
+// @access  Private (Admins)
+exports.getCombinedDashboard = catchAsync(async (req, res, next) => {
+  const branchFilter = getBranchFilter(req);
+  const now = new Date();
+  
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Run all queries in parallel for maximum performance
+  const [
+    statsResult,
+    revenueResult,
+    funnelResult,
+    activityResult,
+    pendingReceipts,
+    pendingExpenses
+  ] = await Promise.all([
+    // Combined stats in single aggregation
+    Promise.all([
+      Branch.countDocuments(req.user.role === 'super_admin' ? {} : { _id: req.user.branchId }),
+      User.countDocuments(branchFilter),
+      ServiceForm.countDocuments({ ...branchFilter, createdAt: { $gte: startOfDay } }),
+      ServiceForm.countDocuments({ ...branchFilter, createdAt: { $gte: startOfWeek } }),
+      ServiceForm.countDocuments({ ...branchFilter, createdAt: { $gte: startOfMonth } }),
+      // Combined Receipt stats in single query (only APPROVED receipts count)
+      Receipt.aggregate([
+        { $match: { ...branchFilter, approvalStatus: 'APPROVED' } },
+        { $facet: {
+          pending: [{ $match: { status: { $in: ['PENDING', 'PARTIAL'] } } }, { $group: { _id: null, totalDue: { $sum: '$balanceDue' } } }],
+          today: [{ $match: { createdAt: { $gte: startOfDay } } }, { $group: { _id: null, total: { $sum: '$advancePaid' } } }],
+          overall: [{ $group: { _id: null, total: { $sum: '$advancePaid' } } }]
+        }}
+      ]),
+    ]),
+    
+    // Revenue - branch breakdown (optimized projection - only APPROVED receipts)
+    Receipt.aggregate([
+      { $match: { ...branchFilter, approvalStatus: 'APPROVED', status: 'PAID' } },
+      { $group: { _id: '$branchId', totalCollected: { $sum: '$advancePaid' } } },
+      { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
+      { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+      { $project: { branchName: { $ifNull: ['$branch.branchName', 'Unknown'] }, totalCollected: 1 } },
+      { $sort: { totalCollected: -1 } },
+      { $limit: 5 }
+    ]),
+    
+    // Funnel - optimized
+    Enquiry.aggregate([
+      { $match: branchFilter },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]),
+    
+    // Activity - recent items (optimized lean queries - only APPROVED receipts)
+    Promise.all([
+      ServiceForm.find(branchFilter).sort('-createdAt').limit(5).select('orderNo status createdAt').lean(),
+      Enquiry.find(branchFilter).sort('-createdAt').limit(5).select('customerName createdAt').lean(),
+      Receipt.find({ ...branchFilter, approvalStatus: 'APPROVED' }).sort('-createdAt').limit(5).select('receiptNo advancePaid createdAt').lean(),
+    ]).then(([forms, enqs, rcpts]) => {
+      let activity = [
+        ...forms.map(f => ({ type: 'FORM', timestamp: f.createdAt, description: `Job ${f.orderNo || 'Draft'} - ${f.status}` })),
+        ...enqs.map(e => ({ type: 'ENQUIRY', timestamp: e.createdAt, description: `Lead: ${e.customerName || 'Unknown'}` })),
+        ...rcpts.map(r => ({ type: 'RECEIPT', timestamp: r.createdAt, description: `Receipt ₹${r.advancePaid || 0}` })),
+      ];
+      return activity.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 10);
+    }),
+    
+    // Pending approvals (role-based)
+    Receipt.find({ ...branchFilter, approvalStatus: 'PENDING' })
+      .select('receiptNo totalAmount customerName paymentMode createdAt')
+      .sort('-createdAt')
+      .limit(5)
+      .lean(),
+    
+    // Pending expenses (role-based)
+    Expense.find({ ...branchFilter, status: 'PENDING' })
+      .select('amount category description employeeId createdAt')
+      .sort('-createdAt')
+      .limit(5)
+      .populate('employeeId', 'name')
+      .lean()
+  ]);
+
+  const [
+    totalBranches,
+    totalEmployees,
+    formsToday,
+    formsWeek,
+    formsMonth,
+    receiptStats,
+  ] = statsResult;
+
+  const { pending, today, overall } = receiptStats[0] || { pending: [], today: [], overall: [] };
+
+  res.status(200).json({
+    success: true,
+    data: {
+      stats: {
+        branches: totalBranches,
+        employees: totalEmployees,
+        forms: { today: formsToday, week: formsWeek, month: formsMonth },
+        pendingRevenue: pending[0]?.totalDue || 0,
+        todayCollection: today[0]?.total || 0,
+        overallCollection: overall[0]?.total || 0,
+      },
+      revenue: revenueResult,
+      funnel: funnelResult,
+      activity: activityResult,
+        pendingApprovals: pendingReceipts,
+      pendingExpenses: pendingExpenses,
+    }
   });
 });

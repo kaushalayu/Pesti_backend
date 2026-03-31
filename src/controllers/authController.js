@@ -21,8 +21,9 @@ const sendTokenResponse = async (user, statusCode, res) => {
   const accessToken = signAccessToken(user._id);
   const refreshToken = signRefreshToken(user._id);
 
-  // Persist hashed refresh token
+  // Persist hashed refresh token in one update
   user.refreshToken = refreshToken;
+  user.lastLogin = Date.now();
   await user.save({ validateBeforeSave: false });
 
   // Set refresh token in httpOnly cookie
@@ -63,9 +64,6 @@ const login = catchAsync(async (req, res, next) => {
   if (!user.isActive) {
     return next(new AppError('Your account has been deactivated. Contact admin.', 403));
   }
-
-  user.lastLogin = Date.now();
-  await user.save({ validateBeforeSave: false });
 
   sendTokenResponse(user, 200, res);
 });

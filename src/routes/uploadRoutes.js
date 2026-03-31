@@ -16,7 +16,8 @@ router.post('/', upload.single('file'), (req, res, next) => {
     return next(new AppError('No file provided', 400));
   }
 
-  const filePath = `/uploads/${req.file.filename}`;
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const filePath = `${baseUrl}/uploads/${req.file.filename}`;
 
   res.status(200).json({
     success: true,

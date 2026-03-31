@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { generateAutoId } = require('../utils/autoId');
+const { generateUniqueId } = require('../utils/generateId');
 const Branch = require('./Branch');
 
 const amcSchema = new mongoose.Schema({
@@ -13,6 +13,9 @@ const amcSchema = new mongoose.Schema({
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
   period: { type: Number, required: true },
+  servicesPerMonth: { type: Number, default: 1 },
+  totalServices: { type: Number, required: true },
+  interval: { type: Number, default: 30 },
   totalAmount: { type: Number, required: true },
   paidAmount: { type: Number, default: 0 },
   balanceAmount: { type: Number, default: 0 },
@@ -20,9 +23,16 @@ const amcSchema = new mongoose.Schema({
   servicesIncluded: [{ type: String }],
   branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', required: true },
   employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  formId: { type: mongoose.Schema.Types.ObjectId, ref: 'ServiceForm' },
   renewalReminder: { type: Date },
   notes: { type: String },
 }, { timestamps: true });
+
+amcSchema.index({ branchId: 1, status: 1 });
+amcSchema.index({ customerId: 1 });
+amcSchema.index({ customerPhone: 1 });
+amcSchema.index({ status: 1, endDate: 1 });
+amcSchema.index({ formId: 1 });
 
 amcSchema.pre('save', function(next) {
   this.balanceAmount = this.totalAmount - this.paidAmount;
@@ -30,18 +40,16 @@ amcSchema.pre('save', function(next) {
 });
 
 amcSchema.pre('validate', async function () {
-  if (this.isNew && !this.contractNo && this.branchId) {
+  if (this.isNew && !this.contractNo && this.branchId && this.employeeId) {
     try {
-      const branch = await Branch.findById(this.branchId);
-      if (branch && branch.cityPrefix) {
-        const year = new Date().getFullYear();
-        this.contractNo = await generateAutoId(
-          mongoose.model('AMC'),
-          `AMC-${branch.cityPrefix}-${year}`,
-          'contractNo',
-          4
-        );
-      }
+      const branch = await Branch.findById(this.branchId).select('branchCode');
+      const User = mongoose.model('User');
+      const user = await User.findById(this.employeeId).select('employeeId');
+      
+      const branchCode = branch?.branchCode?.replace(/-/g, '').substring(0, 3) || 'HQ';
+      const empCode = user?.employeeId?.replace(/-/g, '').substring(0, 3) || 'S00';
+      
+      this.contractNo = generateUniqueId('AMC', branchCode, empCode);
     } catch (error) {
       console.error('Error generating contract number:', error.message);
     }

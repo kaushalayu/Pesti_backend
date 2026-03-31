@@ -87,7 +87,12 @@ exports.getEnquiry = catchAsync(async (req, res, next) => {
   }
 
   // Role validation
-  if (req.user.role !== 'super_admin') {
+  if (req.user.role === 'technician' || req.user.role === 'sales') {
+    // Technicians/sales can only see their own enquiries
+    if (enquiry.addedBy?._id?.toString() !== req.user._id.toString()) {
+      return next(new AppError('Permission Denied - You can only view your own enquiries', 403));
+    }
+  } else if (req.user.role === 'branch_admin' || req.user.role === 'office') {
     const enqBranchId = enquiry.branchId?._id?.toString() || enquiry.branchId?.toString();
     const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
     if (enqBranchId !== userBranchId) {
@@ -119,7 +124,12 @@ exports.updateEnquiry = catchAsync(async (req, res, next) => {
   // Branch isolation constraint
   const enqBranchId = enquiry.branchId?.toString();
   const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
-  if (req.user.role !== 'super_admin' && enqBranchId !== userBranchId) {
+  
+  if (req.user.role === 'technician' || req.user.role === 'sales') {
+    if (enquiry.addedBy?._id?.toString() !== req.user._id.toString()) {
+      return next(new AppError('Permission Denied - You can only update your own enquiries', 403));
+    }
+  } else if (req.user.role !== 'super_admin' && enqBranchId !== userBranchId) {
     return next(new AppError('Permission Denied', 403));
   }
 

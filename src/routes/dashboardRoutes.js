@@ -5,6 +5,7 @@ const {
   getEnquiryFunnel,
   getRecentActivity,
   getEmployeePerformance,
+  getCombinedDashboard,
 } = require('../controllers/dashboardController');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -12,10 +13,11 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get('/stats', restrictTo('super_admin', 'branch_admin'), getOverviewStats);
-router.get('/revenue', restrictTo('super_admin', 'branch_admin'), getRevenueAnalytics);
-router.get('/enquiry-funnel', restrictTo('super_admin', 'branch_admin'), getEnquiryFunnel);
-router.get('/activity', restrictTo('super_admin', 'branch_admin'), getRecentActivity);
-router.get('/employee-performance', restrictTo('super_admin', 'branch_admin'), getEmployeePerformance);
+router.get('/combined', getCombinedDashboard);
+router.get('/stats', getOverviewStats);
+router.get('/revenue', getRevenueAnalytics);
+router.get('/enquiry-funnel', getEnquiryFunnel);
+router.get('/activity', getRecentActivity);
+router.get('/employee-performance', getEmployeePerformance);
 
 module.exports = router;

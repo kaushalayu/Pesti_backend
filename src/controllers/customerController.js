@@ -31,7 +31,10 @@ exports.getCustomers = catchAsync(async (req, res, next) => {
       queryObj.branchId = branchId;
     }
   } else if (req.user.role === 'technician' || req.user.role === 'sales') {
-    queryObj._id = { $in: [] };
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
+    if (branchId) {
+      queryObj.branchId = branchId;
+    }
   }
 
   if (queryObj.search) {

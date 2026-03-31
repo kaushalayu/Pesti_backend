@@ -7,25 +7,29 @@ const {
   downloadReceiptPdf,
   resendReceiptEmail,
   getReceiptStats,
+  getPendingApprovals,
+  generateFromForm,
 } = require('../controllers/receiptController');
 const { protect, restrictTo } = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
 const router = express.Router();
 
-// Require login for all receipt routes
 router.use(protect);
 
 router.get('/stats', getReceiptStats);
+router.get('/pending', getPendingApprovals);
+
+router.post('/', upload.single('paymentScreenshot'), createReceipt);
+router.post('/from-form/:formId', upload.single('paymentScreenshot'), generateFromForm);
 
 router.route('/')
-  .post(createReceipt)
   .get(getReceipts);
 
 router.route('/:id')
   .get(getReceipt)
-  .patch(restrictTo('super_admin', 'branch_admin'), updateReceipt); // Only admins should tweak numbers
+  .patch(restrictTo('super_admin', 'branch_admin', 'office', 'technician', 'sales'), updateReceipt);
 
-// Actions
 router.get('/:id/pdf', downloadReceiptPdf);
 router.post('/:id/resend', resendReceiptEmail);
 

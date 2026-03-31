@@ -9,10 +9,18 @@ const enquiryRoutes = require('./enquiryRoutes');
 const dashboardRoutes = require('./dashboardRoutes');
 const collectionRoutes = require('./collectionRoutes');
 const inventoryRoutes = require('./inventoryRoutes');
+const paymentRoutes = require('./paymentRoutes');
 const expenseRoutes = require('./expenseRoutes');
 const amcRoutes = require('./amcRoutes');
 const uploadRoutes = require('./uploadRoutes');
 const serviceRateRoutes = require('./serviceRateRoutes');
+const notificationRoutes = require('./notificationRoutes');
+const travelLogRoutes = require('./travelLogRoutes');
+const purchaseRequestRoutes = require('./purchaseRequestRoutes');
+const stockTransferRoutes = require('./stockTransferRoutes');
+const hqAccountRoutes = require('./hqAccountRoutes');
+const ledgerRoutes = require('./ledgerRoutes');
+const taskAssignmentRoutes = require('./taskAssignmentRoutes');
 
 const router = express.Router();
 
@@ -26,9 +34,17 @@ router.use('/enquiries', enquiryRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/collections', collectionRoutes);
 router.use('/inventory', inventoryRoutes);
+router.use('/payments', paymentRoutes);
 router.use('/expenses', expenseRoutes);
 router.use('/amc', amcRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/service-rates', serviceRateRoutes);
+router.use('/notifications', notificationRoutes);
+router.use('/travel-logs', travelLogRoutes);
+router.use('/purchase-requests', purchaseRequestRoutes);
+router.use('/stock-transfers', stockTransferRoutes);
+router.use('/hq-account', hqAccountRoutes);
+router.use('/ledger', ledgerRoutes);
+router.use('/task-assignments', taskAssignmentRoutes);
 
 module.exports = router;

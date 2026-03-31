@@ -31,16 +31,20 @@ const expenseSchema = new mongoose.Schema(
       trim: true,
     },
     
-    date: {
+    billDate: {
       type: Date,
       default: Date.now,
     },
     
-    // Admin can approve/reject
+    billPhoto: {
+      type: String,
+      default: null,
+    },
+    
     status: {
       type: String,
-      enum: ['PENDING', 'APPROVED', 'REJECTED'],
-      default: 'PENDING',
+      enum: ['PENDING_BRANCH', 'PENDING_HQ', 'APPROVED', 'REJECTED'],
+      default: 'PENDING_BRANCH',
     },
 
     approvedBy: {
@@ -48,9 +52,30 @@ const expenseSchema = new mongoose.Schema(
       ref: 'User',
     },
 
+    approvedAt: {
+      type: Date,
+    },
+
+    rejectionReason: {
+      type: String,
+      default: null,
+    },
+
+    reviewedAt: {
+      type: Date,
+    },
+
     receiptNote: { type: String },
+
+    notes: {
+      type: String,
+    },
   },
   { timestamps: true }
 );
+
+expenseSchema.index({ employeeId: 1, status: 1 });
+expenseSchema.index({ branchId: 1, status: 1 });
+expenseSchema.index({ status: 1 });
 
 module.exports = mongoose.model('Expense', expenseSchema);

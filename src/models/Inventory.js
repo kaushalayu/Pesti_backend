@@ -4,16 +4,30 @@ const inventorySchema = new mongoose.Schema(
   {
     chemicalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chemical', required: true },
     
-    // The owner of this stock. Can be a Branch or a User (Employee)
     ownerId: { type: mongoose.Schema.Types.ObjectId, required: true },
-    ownerType: { type: String, enum: ['Branch', 'User'], required: true },
+    ownerType: { type: String, enum: ['Branch', 'Employee'], required: true },
     
-    quantity: { type: Number, default: 0, min: 0 },
+    quantity: { type: Number, default: 0 },
+    unit: { type: String, default: 'L' },
+    
+    unitPrice: { type: Number, default: 0 },
+    totalValue: { type: Number, default: 0 },
+    
+    originalQuantity: { type: Number, default: 0 },
+    usedQuantity: { type: Number, default: 0 },
+    returnedQuantity: { type: Number, default: 0 },
+    
+    purchaseRate: { type: Number, default: 0 },
+    transferRate: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
-// Compound index for unique chemical per owner
 inventorySchema.index({ chemicalId: 1, ownerId: 1 }, { unique: true });
+inventorySchema.index({ ownerId: 1, ownerType: 1 });
+
+inventorySchema.pre('save', function() {
+  this.totalValue = Math.round(this.quantity * this.transferRate * 100) / 100;
+});
 
 module.exports = mongoose.model('Inventory', inventorySchema);

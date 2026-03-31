@@ -1,20 +1,25 @@
 const ServiceForm = require('../models/ServiceForm');
+const AMC = require('../models/AMC');
 const AppError = require('../utils/AppError');
 const catchAsync = require('../utils/catchAsync');
 const { paginate } = require('../utils/paginate');
-const { generateJobCardPdf } = require('../services/pdfService');
+const { generateJobCardPdf, generateServicePdf } = require('../services/pdfHtmlService');
 const emailQueue = require('../jobs/emailQueue');
 
 // @desc    Create a new Service Form (Draft)
 // @route   POST /api/forms
 // @access  Private (Employee/Admin)
 exports.createForm = catchAsync(async (req, res, next) => {
+  // Clean up empty strings - convert to null for ObjectId fields
+  const cleanBody = { ...req.body };
+  if (!cleanBody.customerId || cleanBody.customerId === '') cleanBody.customerId = null;
+  if (!cleanBody.branchId || cleanBody.branchId === '') cleanBody.branchId = null;
+  
   const formPayload = {
-    ...req.body,
+    ...cleanBody,
     employeeId: req.user._id,
-    // Use req.body.branchId if super_admin provides it, otherwise default to user's branch
-    branchId: (req.user.role === 'super_admin' && req.body.branchId) 
-      ? req.body.branchId 
+    branchId: (req.user.role === 'super_admin' && cleanBody.branchId) 
+      ? cleanBody.branchId 
       : req.user.branchId,
   };
 
@@ -197,9 +202,9 @@ exports.submitForm = catchAsync(async (req, res, next) => {
 
 // @desc    Update form status (SCHEDULED, COMPLETED, CANCELLED)
 // @route   PATCH /api/forms/:id/status
-// @access  Private
+// @access  Private (all roles can update status)
 exports.updateFormStatus = catchAsync(async (req, res, next) => {
-  const { status } = req.body;
+  const { status, notes } = req.body;
   const allowedStatuses = ['DRAFT', 'SUBMITTED', 'SCHEDULED', 'COMPLETED', 'CANCELLED'];
 
   if (!allowedStatuses.includes(status)) {
@@ -212,11 +217,122 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
     return next(new AppError('No service form found with that ID', 404));
   }
 
+  const oldStatus = form.status;
+  const userRole = req.user.role;
+
+  // EVERYONE can directly complete forms - No permission issues!
+  // Only restriction: Cannot go backwards (except cancelled)
+  const statusOrder = { 'DRAFT': 0, 'SUBMITTED': 1, 'SCHEDULED': 2, 'COMPLETED': 3 };
+  
+  // Allow direct jumps to COMPLETED from any status (except already completed/cancelled)
+  if (status === 'COMPLETED' && oldStatus !== 'COMPLETED' && oldStatus !== 'CANCELLED') {
+    // Allowed - Everyone can complete directly!
+  }
+  // Allow SUBMITTED from DRAFT
+  else if (status === 'SUBMITTED' && oldStatus === 'DRAFT') {
+    // Allowed
+  }
+  // Allow SCHEDULED from SUBMITTED
+  else if (status === 'SCHEDULED' && oldStatus === 'SUBMITTED') {
+    // Allowed
+  }
+  // Prevent going backwards
+  else if (statusOrder[oldStatus] >= statusOrder[status] && status !== 'CANCELLED') {
+    return next(new AppError(`Cannot change status from ${oldStatus} to ${status}`, 400));
+  }
+  // CANCELLED can be set from any non-completed status
+  else if (status === 'CANCELLED' && (oldStatus === 'COMPLETED' || oldStatus === 'CANCELLED')) {
+    return next(new AppError('Cannot cancel an already completed form', 400));
+  }
+
+  // Update status and add history using findByIdAndUpdate to avoid full document validation
+  const statusUpdate = {
+    $set: { status },
+    $push: {
+      statusHistory: {
+        status,
+        changedBy: req.user._id,
+        changedAt: new Date(),
+        notes: notes || ''
+      }
+    }
+  };
+
+  await ServiceForm.findByIdAndUpdate(req.params.id, statusUpdate);
+  
+  // Update form object for response
   form.status = status;
-  await form.save();
+  if (!form.statusHistory) form.statusHistory = [];
+  form.statusHistory.push({
+    status,
+    changedBy: req.user._id,
+    changedAt: new Date(),
+    notes: notes || ''
+  });
+
+  // Auto-create AMC contract when form is submitted with AMC services
+  if (oldStatus === 'DRAFT' && status === 'SUBMITTED') {
+    const shouldCreateAMC = (form.serviceType === 'AMC' || form.serviceType === 'BOTH') 
+      && form.amcServices && form.amcServices.length > 0;
+    
+    if (shouldCreateAMC) {
+      try {
+        const startDate = form.schedule?.date ? new Date(form.schedule.date) : new Date();
+        const period = form.contract?.period || 12;
+        const endDate = form.contract?.endDate ? new Date(form.contract.endDate) : new Date(startDate.setMonth(startDate.getMonth() + period));
+        
+        const amcData = {
+          formId: form._id,
+          customerId: form.customerId,
+          branchId: form.branchId,
+          employeeId: form.employeeId,
+          customerName: form.customer?.name || '',
+          customerPhone: form.customer?.phone || '',
+          customerAddress: form.customer?.address || '',
+          serviceType: form.serviceCategory || 'Residential',
+          premisesType: form.premises?.type || 'Bunglow',
+          servicesIncluded: form.amcServices,
+          startDate: form.schedule?.date || new Date().toISOString().split('T')[0],
+          endDate: form.contract?.endDate || endDate,
+          period: period,
+          servicesPerMonth: form.schedule?.servicesPerMonth || 1,
+          totalServices: form.schedule?.serviceCount || 1,
+          interval: form.schedule?.intervalDays || 30,
+          totalAmount: form.pricing?.finalAmount || 0,
+          paidAmount: form.billing?.advance || 0,
+          status: 'ACTIVE',
+        };
+        
+        const amc = await AMC.create(amcData);
+        console.log(`AMC Contract auto-created: ${amc.contractNo} for form ${form.orderNo}`);
+      } catch (amcError) {
+        console.error('AMC auto-creation failed:', amcError.message);
+      }
+    }
+  }
+
+  // Send notification email based on status
+  if (form.customer && form.customer.email) {
+    try {
+      if (status === 'SCHEDULED') {
+        await emailQueue.add({
+          type: 'SERVICE_SCHEDULED',
+          data: { formId: form._id }
+        });
+      } else if (status === 'COMPLETED') {
+        await emailQueue.add({
+          type: 'SERVICE_COMPLETED',
+          data: { formId: form._id }
+        });
+      }
+    } catch (error) {
+      console.warn('Status notification failed:', error.message);
+    }
+  }
 
   res.status(200).json({
     success: true,
+    message: `Form status updated to ${status}`,
     data: form,
   });
 });
@@ -225,9 +341,11 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
 // @route   GET /api/forms/:id/pdf
 // @access  Private
 exports.downloadFormPdf = catchAsync(async (req, res, next) => {
+  const ServiceRate = require('../models/ServiceRate');
+  
   const form = await ServiceForm.findById(req.params.id)
     .populate('branchId', 'branchName branchCode city address phone')
-    .populate('employeeId', 'name')
+    .populate('employeeId', 'name employeeId phone')
     .populate('customerId', 'name phone email address city gstNo');
 
   if (!form) {
@@ -260,12 +378,26 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
     console.log('Form customer:', form.customer?.name);
     console.log('Form branch:', form.branchId?.branchName);
     
-    // Ensure required fields have defaults
+    // Fetch service rates for the PDF
+    let serviceRates = {};
+    try {
+      const rates = await ServiceRate.find({
+        category: form.serviceCategory,
+        ...(form.branchId ? { branchId: form.branchId._id || form.branchId } : {})
+      });
+      rates.forEach(r => { serviceRates[r.serviceName] = r.price; });
+    } catch (rateError) {
+      console.log('Could not fetch service rates:', rateError.message);
+    }
+    
+    const employeeName = form.employeeId?.name || formDoc?.employeeId?.name || 'N/A';
+    
     const safeForm = {
       ...form.toObject ? form.toObject() : form,
       customer: form.customer || {},
       branchId: form.branchId || { branchName: 'N/A', city: 'N/A' },
-      employeeId: form.employeeId || { name: 'N/A' },
+      employeeId: form.employeeId || { name: employeeName },
+      serviceProvider: employeeName,
       billing: form.billing || { total: 0, advance: 0, due: 0, discount: 0, paymentMode: 'N/A' },
       schedule: form.schedule || { type: 'N/A', date: '', time: '' },
       premises: form.premises || {},
@@ -273,7 +405,12 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
       amcServices: form.amcServices || [],
       serviceCategory: form.serviceCategory || 'N/A',
       status: form.status || 'N/A',
-      createdAt: form.createdAt || new Date()
+      createdAt: form.createdAt || new Date(),
+      ratePerSqft: form.ratePerSqft || 0,
+      perFloorExtra: form.perFloorExtra || 0,
+      pesticides: form.pesticides || [],
+      serviceDetails: form.serviceDetails || {},
+      serviceRates: serviceRates
     };
     
     const pdfBuffer = await generateJobCardPdf(safeForm);
@@ -298,6 +435,93 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
   }
 });
 
+// @desc    Download PDF for a specific service in AMC
+// @route   GET /api/forms/:id/service/:serviceIndex/pdf
+// @access  Private
+exports.downloadServicePdf = catchAsync(async (req, res, next) => {
+  const ServiceRate = require('../models/ServiceRate');
+  
+  const { id, serviceIndex } = req.params;
+  const serviceNum = parseInt(serviceIndex) + 1;
+  
+  const form = await ServiceForm.findById(id)
+    .populate('branchId', 'branchName branchCode city address phone')
+    .populate('employeeId', 'name employeeId phone')
+    .populate('customerId', 'name phone email address city gstNo');
+
+  if (!form) {
+    return next(new AppError('No service form found with that ID', 404));
+  }
+
+  // Role-based permission check
+  if (req.user.role === 'technician' || req.user.role === 'sales') {
+    const formEmployeeId = form.employeeId?._id?.toString() || form.employeeId?.toString();
+    if (formEmployeeId !== req.user._id.toString()) {
+      return next(new AppError('Permission Denied - Can only download your own forms', 403));
+    }
+  }
+
+  if (!form.customer && form.customerId) {
+    form.customer = {
+      name: form.customerId.name,
+      phone: form.customerId.phone,
+      email: form.customerId.email,
+      address: form.customerId.address,
+      city: form.customerId.city,
+      gstNo: form.customerId.gstNo
+    };
+  }
+
+  try {
+    console.log('Controller: Starting service PDF generation for', form.orderNo, 'service', serviceNum);
+    
+    // Fetch service rates for the PDF
+    let serviceRates = {};
+    try {
+      const rates = await ServiceRate.find({
+        category: form.serviceCategory,
+        ...(form.branchId ? { branchId: form.branchId._id || form.branchId } : {})
+      });
+      rates.forEach(r => { serviceRates[r.serviceName] = r.price; });
+    } catch (rateErr) {
+      console.log('Could not fetch service rates:', rateErr.message);
+    }
+
+    // Get the specific scheduled date
+    const scheduledDates = form.schedule?.scheduledDates || [];
+    const selectedService = scheduledDates[parseInt(serviceIndex)];
+    
+    // Create a safe copy of form for PDF generation
+    const safeForm = form.toObject();
+    
+    // Add service number info to the form
+    safeForm.currentServiceNumber = serviceNum;
+    safeForm.totalServices = scheduledDates.length;
+    safeForm.serviceDate = selectedService?.date || form.schedule?.date || '';
+    safeForm.serviceFormatted = selectedService?.formatted || '';
+    
+    const pdfBuffer = await generateServicePdf(safeForm);
+
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      throw new Error('PDF buffer is empty');
+    }
+    
+    res.setHeader('Content-disposition', `attachment; filename=JobCard_${form.orderNo}_Service${serviceNum}.pdf`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', pdfBuffer.length);
+    
+    console.log('Controller: Sending service PDF, size:', pdfBuffer.length);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Service PDF Generation Error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: `Failed to generate service PDF: ${error.message}`,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
 // @desc    Get form stats (Aggregation pipeline)
 // @route   GET /api/forms/stats
 // @access  Private (Super Admin / Branch Admin)
@@ -314,9 +538,9 @@ exports.getFormStats = catchAsync(async (req, res, next) => {
       $group: {
         _id: '$status',
         count: { $sum: 1 },
-        totalRevenue: { $sum: '$billing.total' },
-        totalAdvance: { $sum: '$billing.advance' },
-        totalPending: { $sum: '$billing.due' },
+        totalRevenue: { $sum: { $ifNull: ['$pricing.finalAmount', '$billing.total', 0] } },
+        totalAdvance: { $sum: { $ifNull: ['$billing.advance', 0] } },
+        totalPending: { $sum: { $ifNull: ['$billing.due', 0] } },
       },
     },
   ]);

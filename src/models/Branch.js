@@ -17,7 +17,7 @@ const branchSchema = new mongoose.Schema(
       type: String,
       required: [true, 'City name is required'],
       trim: true,
-      uppercase: true, // e.g., 'LUCKNOW'
+      uppercase: true,
     },
     cityPrefix: {
       type: String,
@@ -44,18 +44,21 @@ const branchSchema = new mongoose.Schema(
     },
     adminId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User', // The designated Branch Admin
+      ref: 'User',
       default: null,
     },
     isActive: {
       type: Boolean,
       default: true,
     },
+    
+    totalReceivedValue: { type: Number, default: 0 },
+    totalPaid: { type: Number, default: 0 },
+    pendingBalance: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
-// Auto-generate branchCode before validation/saving if not provided
 branchSchema.pre('validate', async function () {
   if (this.isNew && !this.branchCode && this.cityPrefix) {
     try {
@@ -63,7 +66,7 @@ branchSchema.pre('validate', async function () {
         this.constructor,
         this.cityPrefix,
         'branchCode',
-        3 // e.g., LKO-001
+        3
       );
     } catch (error) {
       throw error;

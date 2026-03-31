@@ -6,7 +6,8 @@ const {
   updateAMC, 
   renewAMC,
   deleteAMC,
-  getExpiringAMCs
+  getExpiringAMCs,
+  getAMCsByPhone
 } = require('../controllers/amcController');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -15,6 +16,7 @@ const router = express.Router();
 router.use(protect);
 
 router.get('/expiring', restrictTo('super_admin', 'branch_admin'), getExpiringAMCs);
+router.get('/phone/:phone', getAMCsByPhone);
 
 router.route('/')
   .post(createAMC)

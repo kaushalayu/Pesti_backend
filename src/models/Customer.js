@@ -18,6 +18,11 @@ const customerSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+customerSchema.index({ phone: 1 });
+customerSchema.index({ email: 1 });
+customerSchema.index({ branchId: 1 });
+customerSchema.index({ name: 'text', address: 'text' });
+
 customerSchema.pre('validate', async function () {
   if (this.isNew && !this.customerId && this.branchId) {
     try {

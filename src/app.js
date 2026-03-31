@@ -4,6 +4,14 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const path = require('path');
+const fs = require('fs');
+
+// Create uploads folder if it doesn't exist
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('Created uploads folder');
+}
 
 const AppError = require('./utils/AppError');
 const errorHandler = require('./middleware/errorHandler');
@@ -15,7 +23,7 @@ const app = express();
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({ 
   origin: [
-    process.env.FRONTEND_URL || 'https://pestiside-liart.vercel.app',
+    'https://pestiside-liart.vercel.app',
     'http://localhost:5173',
     'http://localhost:3000',
     'http://127.0.0.1:5173',

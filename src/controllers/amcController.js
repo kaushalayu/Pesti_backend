@@ -5,20 +5,31 @@ const { paginate } = require('../utils/paginate');
 const { generateAutoId } = require('../utils/autoId');
 
 exports.createAMC = catchAsync(async (req, res, next) => {
-  const payload = {
-    ...req.body,
-    branchId: (req.user.role === 'super_admin' && req.body.branchId) ? req.body.branchId : req.user.branchId,
-    employeeId: req.user._id,
-    contractNo: await generateAutoId(AMC, 'AMC-', 'contractNo', 6),
-  };
+  try {
+    // Clean up empty strings - convert to null for ObjectId fields
+    const cleanBody = { ...req.body };
+    if (!cleanBody.customerId || cleanBody.customerId === '') cleanBody.customerId = null;
+    if (!cleanBody.branchId || cleanBody.branchId === '') cleanBody.branchId = null;
+    
+    const branchId = (req.user.role === 'super_admin' && cleanBody.branchId) ? cleanBody.branchId : req.user.branchId;
 
-  if (!payload.branchId) {
-    return next(new AppError('Branch assignment is required.', 400));
+    if (!branchId) {
+      return next(new AppError('Branch assignment is required.', 400));
+    }
+
+    const payload = {
+      ...cleanBody,
+      branchId,
+      employeeId: req.user._id,
+    };
+
+    const amc = await AMC.create(payload);
+
+    res.status(201).json({ success: true, data: amc });
+  } catch (error) {
+    console.error('AMC creation error:', error);
+    return next(new AppError(`AMC creation failed: ${error.message}`, 400));
   }
-
-  const amc = await AMC.create(payload);
-
-  res.status(201).json({ success: true, data: amc });
 });
 
 exports.getAMCs = catchAsync(async (req, res, next) => {
@@ -165,4 +176,25 @@ exports.getExpiringAMCs = catchAsync(async (req, res, next) => {
     .sort('endDate');
 
   res.status(200).json({ success: true, count: expiringAMCs.length, data: expiringAMCs });
+});
+
+exports.getAMCsByPhone = catchAsync(async (req, res, next) => {
+  const { phone } = req.params;
+  
+  if (!phone) {
+    return next(new AppError('Phone number is required', 400));
+  }
+
+  const query = { customerPhone: phone };
+  
+  if (req.user.role === 'branch_admin') {
+    query.branchId = req.user.branchId;
+  }
+
+  const amcs = await AMC.find(query)
+    .populate('branchId', 'branchName')
+    .populate('employeeId', 'name')
+    .sort('-createdAt');
+
+  res.status(200).json({ success: true, count: amcs.length, data: amcs });
 });

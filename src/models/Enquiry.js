@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { generateAutoId } = require('../utils/autoId');
+const { generateUniqueId } = require('../utils/generateId');
 const Branch = require('./Branch');
 
 const enquirySchema = new mongoose.Schema(
@@ -27,7 +27,7 @@ const enquirySchema = new mongoose.Schema(
         ]
       }
     ],
-    propertySize: { type: String }, // e.g., 2BHK, 1500 sqft
+    propertySize: { type: String },
     
     source: { 
       type: String, 
@@ -64,20 +64,24 @@ const enquirySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-generate enquiryId before validation
+enquirySchema.index({ branchId: 1, createdAt: -1 });
+enquirySchema.index({ addedBy: 1, createdAt: -1 });
+enquirySchema.index({ status: 1 });
+enquirySchema.index({ mobile: 1 });
+enquirySchema.index({ customerName: 'text' });
+enquirySchema.index({ createdAt: -1 });
+
 enquirySchema.pre('validate', async function () {
-  if (this.isNew && !this.enquiryId && this.branchId) {
+  if (this.isNew && !this.enquiryId && this.branchId && this.addedBy) {
     try {
-      const branch = await Branch.findById(this.branchId);
-      if (branch && branch.cityPrefix) {
-        const year = new Date().getFullYear();
-        this.enquiryId = await generateAutoId(
-          this.constructor,
-          `ENQ-${branch.cityPrefix}-${year}`,
-          'enquiryId',
-          4 // e.g., ENQ-LKO-2026-0001
-        );
-      }
+      const branch = await Branch.findById(this.branchId).select('branchCode');
+      const User = mongoose.model('User');
+      const user = await User.findById(this.addedBy).select('employeeId');
+      
+      const branchCode = branch?.branchCode?.replace(/-/g, '').substring(0, 3) || 'HQ';
+      const empCode = user?.employeeId?.replace(/-/g, '').substring(0, 3) || 'S00';
+      
+      this.enquiryId = generateUniqueId('ENQ', branchCode, empCode);
     } catch (error) {
       throw error;
     }

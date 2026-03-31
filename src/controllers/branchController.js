@@ -75,8 +75,14 @@ exports.getBranch = catchAsync(async (req, res, next) => {
 
 // @desc    Update branch
 // @route   PUT /api/branches/:id
-// @access  Private (Super Admin)
+// @access  Private (Super Admin, Branch Admin - own branch only)
 exports.updateBranch = catchAsync(async (req, res, next) => {
+  const branchId = req.params.id;
+  
+  if (req.user.role === 'branch_admin' && req.user.branchId.toString() !== branchId) {
+    return next(new AppError('You can only update your own branch.', 403));
+  }
+
   const branch = await Branch.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
     runValidators: true,
@@ -94,9 +100,14 @@ exports.updateBranch = catchAsync(async (req, res, next) => {
 
 // @desc    Activate/Deactivate branch (Soft Delete)
 // @route   PATCH /api/branches/:id/status
-// @access  Private (Super Admin)
+// @access  Private (Super Admin, Branch Admin - own branch only)
 exports.toggleBranchStatus = catchAsync(async (req, res, next) => {
   const { isActive } = req.body;
+  const branchId = req.params.id;
+
+  if (req.user.role === 'branch_admin' && req.user.branchId.toString() !== branchId) {
+    return next(new AppError('You can only update your own branch.', 403));
+  }
 
   if (isActive === undefined) {
     return next(new AppError('Please provide isActive boolean', 400));

@@ -19,11 +19,9 @@ router.use(protect);
 router.get('/', restrictTo('super_admin', 'branch_admin', 'technician', 'sales', 'office'), getBranches);
 router.get('/:id/stats', restrictTo('super_admin', 'branch_admin'), getBranchStats);
 
-// The rest of the CRM module operations require super admin
-router.use(restrictTo('super_admin'));
-
-router.post('/', createBranch);
-router.route('/:id').get(getBranch).put(updateBranch).delete(deleteBranch);
-router.patch('/:id/status', toggleBranchStatus); // activate/deactivate
+// Allow branch admin to manage their own branch
+router.post('/', restrictTo('super_admin', 'branch_admin'), createBranch);
+router.route('/:id').get(getBranch).put(restrictTo('super_admin', 'branch_admin'), updateBranch).delete(restrictTo('super_admin'), deleteBranch);
+router.patch('/:id/status', restrictTo('super_admin', 'branch_admin'), toggleBranchStatus); // activate/deactivate
 
 module.exports = router;
