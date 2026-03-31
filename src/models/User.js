@@ -83,6 +83,8 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1 });
 userSchema.index({ branchId: 1 });
 userSchema.index({ phone: 1 });
+userSchema.index({ role: 1, branchId: 1 });
+userSchema.index({ isActive: 1 });
 
 // Auto-generate employeeId before validation if not provided (EMP-<CITY_PREFIX>-<NUM>)
 userSchema.pre('validate', async function () {

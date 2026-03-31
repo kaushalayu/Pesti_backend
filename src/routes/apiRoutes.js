@@ -24,6 +24,9 @@ const taskAssignmentRoutes = require('./taskAssignmentRoutes');
 
 const router = express.Router();
 
+// Debug test - inline route
+router.get('/test-collections', (req, res) => res.json({ test: 'works' }));
+
 router.use('/auth', authRoutes);
 router.use('/branches', branchRoutes);
 router.use('/customers', customerRoutes);

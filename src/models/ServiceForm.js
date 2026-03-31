@@ -179,6 +179,11 @@ serviceFormSchema.index({ 'customer.phone': 1 });
 serviceFormSchema.index({ 'customer.name': 'text' });
 serviceFormSchema.index({ createdAt: -1 });
 serviceFormSchema.index({ 'logistics.startMeter': 1, 'logistics.endMeter': 1 });
+serviceFormSchema.index({ 'billing.total': 1 });
+serviceFormSchema.index({ 'billing.advance': 1 });
+serviceFormSchema.index({ status: 1, branchId: 1, createdAt: -1 });
+serviceFormSchema.index({ status: 1, employeeId: 1, createdAt: -1 });
+serviceFormSchema.index({ billing: 1, createdAt: -1 });
 
 serviceFormSchema.pre('validate', async function () {
   if (this.isNew && !this.orderNo && this.branchId && this.employeeId) {

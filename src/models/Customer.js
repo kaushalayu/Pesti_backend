@@ -22,6 +22,8 @@ customerSchema.index({ phone: 1 });
 customerSchema.index({ email: 1 });
 customerSchema.index({ branchId: 1 });
 customerSchema.index({ name: 'text', address: 'text' });
+customerSchema.index({ phone: 1, branchId: 1 }, { unique: true });
+customerSchema.index({ createdAt: -1 });
 
 customerSchema.pre('validate', async function () {
   if (this.isNew && !this.customerId && this.branchId) {

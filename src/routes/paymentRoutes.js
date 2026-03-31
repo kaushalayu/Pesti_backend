@@ -10,11 +10,6 @@ const { protect, restrictTo } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.use((req, res, next) => {
-  console.log(`[PaymentRouter] ${req.method} ${req.url}`);
-  next();
-});
-
 router.use(protect);
 
 router.post('/', restrictTo('super_admin'), addPayment);

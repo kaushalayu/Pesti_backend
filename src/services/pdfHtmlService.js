@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
-const LOGO_PATH = 'C:/Users/91895/Downloads/pestiside/logo (1).jpg';
+const LOGO_PATH = path.join(__dirname, '../../../pest/public/logo.jpg');
 
 const getLogoBase64 = () => {
   try {
@@ -10,9 +10,8 @@ const getLogoBase64 = () => {
       const imgBuffer = fs.readFileSync(LOGO_PATH);
       return `data:image/jpeg;base64,${imgBuffer.toString('base64')}`;
     }
-    console.log('Logo not found at:', LOGO_PATH);
   } catch (e) {
-    console.log('Logo error:', e.message);
+    // Silently fail
   }
   return null;
 };

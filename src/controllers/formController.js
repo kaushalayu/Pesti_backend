@@ -94,14 +94,6 @@ exports.getForm = catchAsync(async (req, res, next) => {
     return next(new AppError('No service form found with that ID', 404));
   }
 
-  // DEBUG: Log what's happening
-  console.log('=== GET FORM DEBUG ===');
-  console.log('Form branchId:', form.branchId);
-  console.log('Form branchId type:', typeof form.branchId);
-  console.log('User branchId:', req.user.branchId);
-  console.log('User branchId type:', typeof req.user.branchId);
-  console.log('User role:', req.user.role);
-  
   // Role Checks - Allow branch_admin to see ALL forms in their branch
   // Branch admin can see all forms in their branch, no restriction
   if (req.user.role === 'technician' || req.user.role === 'sales') {
@@ -304,9 +296,7 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
         };
         
         const amc = await AMC.create(amcData);
-        console.log(`AMC Contract auto-created: ${amc.contractNo} for form ${form.orderNo}`);
       } catch (amcError) {
-        console.error('AMC auto-creation failed:', amcError.message);
       }
     }
   }
@@ -374,10 +364,6 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
   }
 
   try {
-    console.log('Controller: Starting PDF generation for', form.orderNo);
-    console.log('Form customer:', form.customer?.name);
-    console.log('Form branch:', form.branchId?.branchName);
-    
     // Fetch service rates for the PDF
     let serviceRates = {};
     try {
@@ -387,7 +373,6 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
       });
       rates.forEach(r => { serviceRates[r.serviceName] = r.price; });
     } catch (rateError) {
-      console.log('Could not fetch service rates:', rateError.message);
     }
     
     const employeeName = form.employeeId?.name || formDoc?.employeeId?.name || 'N/A';
@@ -423,10 +408,8 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', pdfBuffer.length);
     
-    console.log('Controller: Sending PDF, size:', pdfBuffer.length);
     return res.send(pdfBuffer);
   } catch (error) {
-    console.error('PDF Generation Error:', error);
     return res.status(500).json({ 
       success: false, 
       message: `Failed to generate PDF: ${error.message}`,
@@ -473,8 +456,6 @@ exports.downloadServicePdf = catchAsync(async (req, res, next) => {
   }
 
   try {
-    console.log('Controller: Starting service PDF generation for', form.orderNo, 'service', serviceNum);
-    
     // Fetch service rates for the PDF
     let serviceRates = {};
     try {
@@ -484,7 +465,6 @@ exports.downloadServicePdf = catchAsync(async (req, res, next) => {
       });
       rates.forEach(r => { serviceRates[r.serviceName] = r.price; });
     } catch (rateErr) {
-      console.log('Could not fetch service rates:', rateErr.message);
     }
 
     // Get the specific scheduled date
@@ -510,7 +490,6 @@ exports.downloadServicePdf = catchAsync(async (req, res, next) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', pdfBuffer.length);
     
-    console.log('Controller: Sending service PDF, size:', pdfBuffer.length);
     return res.send(pdfBuffer);
   } catch (error) {
     console.error('Service PDF Generation Error:', error);

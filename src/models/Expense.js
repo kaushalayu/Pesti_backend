@@ -77,5 +77,8 @@ const expenseSchema = new mongoose.Schema(
 expenseSchema.index({ employeeId: 1, status: 1 });
 expenseSchema.index({ branchId: 1, status: 1 });
 expenseSchema.index({ status: 1 });
+expenseSchema.index({ billDate: -1 });
+expenseSchema.index({ branchId: 1, billDate: -1 });
+expenseSchema.index({ employeeId: 1, billDate: -1 });
 
 module.exports = mongoose.model('Expense', expenseSchema);

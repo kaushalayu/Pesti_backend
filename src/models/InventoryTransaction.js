@@ -59,5 +59,9 @@ inventoryTransactionSchema.pre('save', async function() {
 inventoryTransactionSchema.index({ chemicalId: 1, createdAt: -1 });
 inventoryTransactionSchema.index({ txnType: 1 });
 inventoryTransactionSchema.index({ linkedFormId: 1 });
+inventoryTransactionSchema.index({ fromId: 1, txnType: 1, createdAt: -1 });
+inventoryTransactionSchema.index({ toId: 1, txnType: 1, createdAt: -1 });
+inventoryTransactionSchema.index({ ownerId: 1, ownerType: 1, createdAt: -1 });
+inventoryTransactionSchema.index({ txnType: 1, createdAt: -1 });
 
 module.exports = mongoose.model('InventoryTransaction', inventoryTransactionSchema);
