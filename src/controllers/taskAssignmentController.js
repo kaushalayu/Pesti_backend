@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const TaskAssignment = require('../models/TaskAssignment');
 const ServiceForm = require('../models/ServiceForm');
 const User = require('../models/User');
-const AppError = require('../utils/appError');
+const AppError = require('../utils/AppError');
 const catchAsync = require('../utils/catchAsync');
 
 const getUnassignedBookings = catchAsync(async (req, res) => {
