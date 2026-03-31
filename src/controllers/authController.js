@@ -27,10 +27,12 @@ const sendTokenResponse = async (user, statusCode, res) => {
   await user.save({ validateBeforeSave: false });
 
   // Set refresh token in httpOnly cookie
+  const isProduction = process.env.NODE_ENV === 'production';
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   };
 
@@ -65,7 +67,7 @@ const login = catchAsync(async (req, res, next) => {
     return next(new AppError('Your account has been deactivated. Contact admin.', 403));
   }
 
-  sendTokenResponse(user, 200, res);
+  await sendTokenResponse(user, 200, res);
 });
 
 // @desc    Logout user
@@ -107,10 +109,12 @@ const refresh = catchAsync(async (req, res, next) => {
   user.refreshToken = newRefreshToken;
   await user.save({ validateBeforeSave: false });
 
+  const isProduction = process.env.NODE_ENV === 'production';
   res.cookie('refreshToken', newRefreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 

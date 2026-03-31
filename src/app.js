@@ -19,18 +19,17 @@ const apiRoutes = require('./routes/apiRoutes');
 
 const app = express();
 
+const isProduction = process.env.NODE_ENV === 'production';
+const corsOptions = {
+  origin: isProduction 
+    ? ['https://pestiside-liart.vercel.app']
+    : true,
+  credentials: true,
+};
+
 // Security & Logs
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors({ 
-  origin: [
-    'https://pestiside-liart.vercel.app',
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:3000'
-  ],
-  credentials: true 
-}));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
