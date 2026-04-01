@@ -5,7 +5,7 @@ const Notification = require('../models/Notification');
 const AppError = require('../utils/AppError');
 const catchAsync = require('../utils/catchAsync');
 const { paginate } = require('../utils/paginate');
-const { generateReceiptPdf } = require('../services/pdfHtmlService');
+const { generateReceiptPdf } = require('../services/pdfService');
 const { generateUniqueId } = require('../utils/generateId');
 const emailQueue = require('../jobs/emailQueue');
 const Branch = require('../models/Branch');
@@ -117,11 +117,22 @@ exports.createReceipt = catchAsync(async (req, res, next) => {
     advancePaid: advancePaid,
     balanceDue: balanceDue,
     employeeId: req.user._id,
-    branchId: (req.user.role === 'super_admin' && req.body?.branchId) ? req.body.branchId : req.user.branchId,
+    branchId: req.body?.branchId || req.user.branchId,
   };
 
+  // Validate branchId - must have branchId from either form body or user
+  const userBranchId = req.user.branchId;
+  const bodyBranchId = req.body?.branchId;
+  
   if (!payload.branchId) {
-    return next(new AppError('Branch ID is required to generate a receipt.', 400));
+    // If user has a branch, use it
+    if (userBranchId) {
+      payload.branchId = typeof userBranchId === 'object' ? userBranchId._id || userBranchId : userBranchId;
+    } else if (bodyBranchId) {
+      payload.branchId = bodyBranchId;
+    } else {
+      return next(new AppError('Branch ID is required. Please select a branch.', 400));
+    }
   }
 
   const branch = await Branch.findById(payload.branchId).select('branchCode');
@@ -374,8 +385,7 @@ exports.downloadReceiptPdf = catchAsync(async (req, res, next) => {
   }
 
   try {
-    const { generateReceiptPdf: generatePdf } = require('../services/pdfService');
-    const pdfBuffer = await generatePdf(receipt);
+    const pdfBuffer = await generateReceiptPdf(receipt);
     
     res.setHeader('Content-disposition', `attachment; filename=Receipt_${receipt.receiptNo}.pdf`);
     res.setHeader('Content-type', 'application/pdf');

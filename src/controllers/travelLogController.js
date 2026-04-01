@@ -8,9 +8,16 @@ const RATE_PER_KM = 10;
 
 const getTravelLogs = async (req, res, next) => {
   try {
-    const logs = await TravelLog.find({ employeeId: req.user._id })
+    let query = { employeeId: req.user._id };
+    
+    // Admin can see all logs from their branch
+    if (req.user.role === 'super_admin' || req.user.role === 'branch_admin') {
+      query = req.user.role === 'super_admin' ? {} : { branchId: req.user.branchId };
+    }
+    
+    const logs = await TravelLog.find(query)
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(100);
     
     res.status(200).json({
       success: true,
