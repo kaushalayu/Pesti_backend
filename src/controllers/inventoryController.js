@@ -97,6 +97,45 @@ exports.deleteChemical = catchAsync(async (req, res, next) => {
   res.status(200).json({ success: true, message: 'Chemical deleted successfully' });
 });
 
+exports.addStock = catchAsync(async (req, res, next) => {
+  const { chemicalId, quantity, unit, notes } = req.body;
+
+  const qty = parseFloat(quantity) || 0;
+  if (qty <= 0) return next(new AppError('Quantity must be greater than 0', 400));
+
+  const chemical = await Chemical.findById(chemicalId);
+  if (!chemical) return next(new AppError('Chemical not found', 404));
+
+  const baseQuantity = convertToBaseUnit(qty, unit || chemical.unitSystem, chemical.unitSystem);
+
+  chemical.mainStock += baseQuantity;
+  await chemical.save();
+
+  await InventoryTransaction.create({
+    txnType: 'STOCK_ADDED',
+    chemicalId,
+    fromType: 'super_admin',
+    fromId: null,
+    toType: 'super_admin',
+    toId: null,
+    quantity: baseQuantity,
+    unit: chemical.unitSystem,
+    purchaseRate: chemical.purchasePrice || 0,
+    transferRate: chemical.purchasePrice ? Math.round(chemical.purchasePrice * 1.10 * 100) / 100 : 0,
+    unitPrice: chemical.purchasePrice || 0,
+    totalValue: 0,
+    type: 'STOCK_ADDED',
+    notes: notes || `Direct stock added: ${qty} ${chemical.unitSystem}`,
+    performedBy: req.user._id
+  });
+
+  res.status(201).json({ 
+    success: true, 
+    message: `Added ${qty} ${chemical.unitSystem} to ${chemical.name}`,
+    data: chemical
+  });
+});
+
 exports.purchaseStock = catchAsync(async (req, res, next) => {
   const { chemicalId, quantity, purchaseRate, purchaseDate, supplierName, supplierContact, invoiceNo, invoicePhotoUrl, notes } = req.body;
 

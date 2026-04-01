@@ -12,7 +12,7 @@ const router = express.Router();
 
 router.use(protect);
 
-router.post('/', restrictTo('super_admin'), addPayment);
+router.post('/', restrictTo('super_admin', 'branch_admin'), addPayment);
 router.get('/', getPayments);
 router.get('/hq-summary', getBranchHQSummary);
 router.get('/summary', restrictTo('super_admin'), getPaymentSummary);

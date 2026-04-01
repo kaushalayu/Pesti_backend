@@ -34,21 +34,7 @@ const emailReceipt = async (receiptId, customerEmail) => {
 // @route   POST /api/receipts
 // @access  Private (Employee/Admin)
 exports.createReceipt = catchAsync(async (req, res, next) => {
-  const fs = require('fs');
-  const path = require('path');
-  
-  // Save uploaded file if exists
-  let paymentScreenshotUrl = null;
-  if (req.file) {
-    const uploadDir = path.join(__dirname, '../../uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    const filename = `payment-${Date.now()}-${req.file.originalname}`;
-    const filepath = path.join(uploadDir, filename);
-    fs.writeFileSync(filepath, req.file.buffer);
-    paymentScreenshotUrl = `/uploads/${filename}`;
-  }
+  const paymentScreenshotUrl = req.body?.paymentScreenshot || null;
 
   // Safe JSON parse helper
   const safeJsonParse = (str, defaultVal) => {
@@ -565,7 +551,7 @@ exports.getPendingApprovals = catchAsync(async (req, res, next) => {
 // @access  Private (Admin only)
 exports.generateFromForm = catchAsync(async (req, res, next) => {
   const { formId } = req.params;
-  const { advancePaid, paymentMode, transactionId, notes } = req.body;
+  const { advancePaid, paymentMode, transactionId, notes, paymentScreenshot } = req.body;
 
   if (!advancePaid || advancePaid <= 0) {
     return next(new AppError('Advance paid amount is required', 400));
@@ -599,10 +585,7 @@ exports.generateFromForm = catchAsync(async (req, res, next) => {
   const empCode = userData?.employeeId?.replace(/-/g, '').substring(0, 3) || 'S00';
   const receiptNo = generateUniqueId('RCP', branchCode, empCode);
 
-  let paymentScreenshotUrl = null;
-  if (req.file) {
-    paymentScreenshotUrl = `/uploads/${req.file.filename}`;
-  }
+  const paymentScreenshotUrl = paymentScreenshot || null;
 
   const totalAmount = form.pricing?.finalAmount || form.billing?.total || 0;
   const balanceDue = Math.ceil(totalAmount - parseFloat(advancePaid));

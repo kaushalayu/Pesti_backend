@@ -10,7 +10,9 @@ const getUnassignedBookings = catchAsync(async (req, res) => {
   
   let query = { status: { $in: ['SUBMITTED', 'SCHEDULED'] } };
   
-  if (branchId) query.branchId = branchId;
+  if (branchId) {
+    query.branchId = new mongoose.Types.ObjectId(branchId);
+  }
   
   if (startDate && endDate) {
     query['schedule.date'] = { $gte: new Date(startDate), $lte: new Date(endDate) };
@@ -28,7 +30,8 @@ const getUnassignedBookings = catchAsync(async (req, res) => {
     .sort({ 'schedule.date': 1 });
   
   const assignedFormIds = await TaskAssignment.find({ status: { $ne: 'DECLINED' } }).distinct('serviceFormId');
-  const unassignedBookings = bookings.filter(b => !assignedFormIds.includes(b._id));
+  const assignedFormIdStrings = assignedFormIds.map(id => id.toString());
+  const unassignedBookings = bookings.filter(b => !assignedFormIdStrings.includes(b._id.toString()));
   
   res.status(200).json({
     success: true,
@@ -55,9 +58,7 @@ const getAllBookingsWithAssignments = catchAsync(async (req, res) => {
   if (status) {
     if (status === 'UNASSIGNED') {
       const assignedFormIds = await TaskAssignment.find({ status: { $ne: 'DECLINED' } }).distinct('serviceFormId');
-      query._id = { $nin: assignedFormIds };
-    } else {
-      query.status = status;
+      query._id = { $nin: assignedFormIds.map(id => new mongoose.Types.ObjectId(id)) };
     }
   }
   
@@ -202,7 +203,8 @@ const assignTask = catchAsync(async (req, res) => {
     branchId: booking.branchId,
     scheduledDate: scheduledDate || booking.schedule?.date,
     notes,
-    status: 'ASSIGNED'
+    status: 'ASSIGNED',
+    assignedAt: new Date()
   });
   
   await task.populate([
@@ -433,7 +435,8 @@ const reAssignTask = catchAsync(async (req, res) => {
     branchId: task.branchId,
     scheduledDate: scheduledDate || task.scheduledDate,
     notes,
-    status: 'ASSIGNED'
+    status: 'ASSIGNED',
+    assignedAt: new Date()
   });
   
   task.status = 'REASSIGNED';

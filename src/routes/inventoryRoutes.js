@@ -5,6 +5,7 @@ const {
   updateChemical,
   deleteChemical,
   purchaseStock,
+  addStock,
   recordUsage,
   getInventory,
   getTransactions,
@@ -31,6 +32,7 @@ router.put('/chemicals/:id', restrictTo('super_admin'), updateChemical);
 router.delete('/chemicals/:id', restrictTo('super_admin'), deleteChemical);
 
 router.post('/purchase', restrictTo('super_admin'), purchaseStock);
+router.post('/add-stock', restrictTo('super_admin'), addStock);
 router.post('/transfer-to-branch', restrictTo('super_admin'), (req, res, next) => {
   res.status(400).json({ 
     success: false, 

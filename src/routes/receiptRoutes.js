@@ -11,7 +11,6 @@ const {
   generateFromForm,
 } = require('../controllers/receiptController');
 const { protect, restrictTo } = require('../middleware/auth');
-const upload = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -20,8 +19,8 @@ router.use(protect);
 router.get('/stats', getReceiptStats);
 router.get('/pending', getPendingApprovals);
 
-router.post('/', upload.single('paymentScreenshot'), createReceipt);
-router.post('/from-form/:formId', upload.single('paymentScreenshot'), generateFromForm);
+router.post('/', createReceipt);
+router.post('/from-form/:formId', generateFromForm);
 
 router.route('/')
   .get(getReceipts);

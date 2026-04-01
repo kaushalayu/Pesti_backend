@@ -172,6 +172,34 @@ exports.submitForm = catchAsync(async (req, res, next) => {
   }
 
   form.status = 'SUBMITTED';
+  
+  // Auto-assign task to the form creator (if technician/sales/branch_admin)
+  const TaskAssignment = require('../models/TaskAssignment');
+  const userRole = req.user.role;
+  
+  let autoAssigned = false;
+  if (['technician', 'sales', 'branch_admin'].includes(userRole)) {
+    // Create automatic task assignment for the form creator
+    const existingAssignment = await TaskAssignment.findOne({
+      serviceFormId: form._id,
+      status: { $in: ['ASSIGNED', 'ACCEPTED', 'PENDING'] }
+    });
+    
+    if (!existingAssignment) {
+      await TaskAssignment.create({
+        serviceFormId: form._id,
+        assignedTo: req.user._id,
+        assignedBy: req.user._id,
+        branchId: form.branchId?._id || form.branchId,
+        scheduledDate: form.schedule?.date || new Date(),
+        notes: 'Auto-assigned from form submission',
+        status: 'ASSIGNED',
+        assignedAt: new Date()
+      });
+      autoAssigned = true;
+    }
+  }
+  
   await form.save();
 
   if (form.customer && form.customer.email) {
@@ -187,8 +215,9 @@ exports.submitForm = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    message: 'Form submitted successfully',
+    message: autoAssigned ? 'Form submitted and task assigned to you!' : 'Form submitted successfully',
     data: form,
+    autoAssigned,
   });
 });
 
