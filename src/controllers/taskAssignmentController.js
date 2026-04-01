@@ -315,6 +315,7 @@ const getMyTasks = catchAsync(async (req, res) => {
     query.status = status;
   }
   
+  // Date filtering is optional - only filter if date params are provided
   if (startDate && endDate) {
     query.scheduledDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
   } else if (date) {
@@ -323,6 +324,7 @@ const getMyTasks = catchAsync(async (req, res) => {
     nextDay.setDate(nextDay.getDate() + 1);
     query.scheduledDate = { $gte: searchDate, $lt: nextDay };
   }
+  // If no date filter provided, return all tasks (for the selected status)
   
   const tasks = await TaskAssignment.find(query)
     .populate({
