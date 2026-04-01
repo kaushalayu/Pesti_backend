@@ -374,15 +374,20 @@ exports.downloadReceiptPdf = catchAsync(async (req, res, next) => {
   }
 
   try {
-    const pdfBuffer = await generateReceiptPdf(receipt);
+    const { generateReceiptPdf: generatePdf } = require('../services/pdfService');
+    const pdfBuffer = await generatePdf(receipt);
     
     res.setHeader('Content-disposition', `attachment; filename=Receipt_${receipt.receiptNo}.pdf`);
     res.setHeader('Content-type', 'application/pdf');
+    res.setHeader('Content-Length', pdfBuffer.length);
     
-    res.send(pdfBuffer);
+    return res.send(pdfBuffer);
   } catch (error) {
-    console.error('PDF generation error:', error);
-    return next(new AppError('Failed to generate PDF document.', 500));
+    console.error('Receipt PDF generation error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate PDF. Please try again later.'
+    });
   }
 });
 

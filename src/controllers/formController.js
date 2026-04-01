@@ -3,7 +3,7 @@ const AMC = require('../models/AMC');
 const AppError = require('../utils/AppError');
 const catchAsync = require('../utils/catchAsync');
 const { paginate } = require('../utils/paginate');
-const { generateJobCardPdf, generateServicePdf } = require('../services/pdfHtmlService');
+const { generateJobCardPdf } = require('../services/pdfService');
 const emailQueue = require('../jobs/emailQueue');
 
 // @desc    Create a new Service Form (Draft)
@@ -427,7 +427,18 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
       serviceRates: serviceRates
     };
     
-    const pdfBuffer = await generateJobCardPdf(safeForm);
+    let pdfBuffer;
+    try {
+      pdfBuffer = await generateJobCardPdf(safeForm);
+    } catch (pdfError) {
+      console.error('PDF Generation Error:', pdfError);
+      // Return a simple error message instead of 500
+      return res.status(500).json({ 
+        success: false, 
+        message: 'PDF generation failed. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? pdfError.message : undefined
+      });
+    }
     
     if (!pdfBuffer || pdfBuffer.length === 0) {
       throw new Error('PDF buffer is empty');
@@ -439,6 +450,7 @@ exports.downloadFormPdf = catchAsync(async (req, res, next) => {
     
     return res.send(pdfBuffer);
   } catch (error) {
+    console.error('PDF Download Error:', error);
     return res.status(500).json({ 
       success: false, 
       message: `Failed to generate PDF: ${error.message}`,
@@ -509,7 +521,8 @@ exports.downloadServicePdf = catchAsync(async (req, res, next) => {
     safeForm.serviceDate = selectedService?.date || form.schedule?.date || '';
     safeForm.serviceFormatted = selectedService?.formatted || '';
     
-    const pdfBuffer = await generateServicePdf(safeForm);
+    // Use the same job card PDF generator for individual service
+    const pdfBuffer = await generateJobCardPdf(safeForm);
 
     if (!pdfBuffer || pdfBuffer.length === 0) {
       throw new Error('PDF buffer is empty');

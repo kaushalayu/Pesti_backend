@@ -181,11 +181,29 @@ const drawPageNumbers = (doc) => {
 exports.generateReceiptPdf = async (receiptDoc) => {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });
+      const doc = new PDFDocument({ 
+        size: 'A4', 
+        margin: 0, 
+        bufferPages: true,
+        info: {
+          Title: 'Payment Receipt',
+          Author: 'Safe Home Pestochem',
+        }
+      });
       const buffers = [];
       doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-      doc.on('error', reject);
+      doc.on('end', () => {
+        try {
+          const result = Buffer.concat(buffers);
+          resolve(result);
+        } catch (err) {
+          reject(err);
+        }
+      });
+      doc.on('error', (err) => {
+        console.error('PDFDocument error:', err);
+        reject(err);
+      });
 
       let y = drawLogoHeader(doc);
       y = drawTitle(doc, y, 'PAYMENT RECEIPT / INVOICE');
@@ -333,11 +351,29 @@ exports.generateReceiptPdf = async (receiptDoc) => {
 exports.generateJobCardPdf = async (formDoc) => {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });
+      const doc = new PDFDocument({ 
+        size: 'A4', 
+        margin: 0, 
+        bufferPages: true,
+        info: {
+          Title: 'Service Job Card',
+          Author: 'Safe Home Pestochem',
+        }
+      });
       const buffers = [];
       doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-      doc.on('error', reject);
+      doc.on('end', () => {
+        try {
+          const result = Buffer.concat(buffers);
+          resolve(result);
+        } catch (err) {
+          reject(err);
+        }
+      });
+      doc.on('error', (err) => {
+        console.error('PDFDocument error:', err);
+        reject(err);
+      });
 
       let y = drawLogoHeader(doc);
       y = drawTitle(doc, y, 'SERVICE JOB CARD');
