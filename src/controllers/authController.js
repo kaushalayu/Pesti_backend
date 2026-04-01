@@ -9,7 +9,7 @@ const transporter = require('../config/email');
 
 const signAccessToken = (id) =>
   jwt.sign({ id }, process.env.JWT_ACCESS_SECRET, {
-    expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m',
+    expiresIn: process.env.JWT_ACCESS_EXPIRES || '24h',
   });
 
 const signRefreshToken = (id) =>
