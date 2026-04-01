@@ -7,6 +7,7 @@ const Enquiry = require('../models/Enquiry');
 const Expense = require('../models/Expense');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
+const cache = require('../utils/cache');
 
 // Helper to filter by branch if needed
 const getBranchFilter = (req) => {
@@ -21,6 +22,14 @@ const getBranchFilter = (req) => {
 // @access  Private (Admins)
 exports.getOverviewStats = catchAsync(async (req, res, next) => {
   const branchFilter = getBranchFilter(req);
+  const cacheKey = `dashboard:stats:${req.user.role}:${req.user.branchId || 'all'}`;
+  
+  // Check cache first
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    return res.status(200).json({ success: true, data: cached, cached: true });
+  }
+
   const now = new Date();
   const startOfDay = new Date(now);
   startOfDay.setHours(0, 0, 0, 0);
@@ -74,21 +83,26 @@ exports.getOverviewStats = catchAsync(async (req, res, next) => {
     ]),
   ]);
 
+  const data = {
+    branches: totalBranches,
+    employees: totalEmployees,
+    forms: {
+      today: formsToday,
+      week: formsWeek,
+      month: formsMonth,
+    },
+    pendingRevenue: pendingPayments.length ? pendingPayments[0].totalDue : 0,
+    todayCollection: todayCollection.length ? todayCollection[0].total : 0,
+    overallCollection: overallCollection.length ? overallCollection[0].total : 0,
+    totalDistance: distanceStats.length ? distanceStats[0].total : 0,
+  };
+
+  // Cache for 2 minutes
+  await cache.set(cacheKey, data, 120);
+
   res.status(200).json({
     success: true,
-    data: {
-      branches: totalBranches,
-      employees: totalEmployees,
-      forms: {
-        today: formsToday,
-        week: formsWeek,
-        month: formsMonth,
-      },
-      pendingRevenue: pendingPayments.length ? pendingPayments[0].totalDue : 0,
-      todayCollection: todayCollection.length ? todayCollection[0].total : 0,
-      overallCollection: overallCollection.length ? overallCollection[0].total : 0,
-      totalDistance: distanceStats.length ? distanceStats[0].total : 0,
-    },
+    data,
   });
 });
 

@@ -13,6 +13,7 @@ const User = require('../models/User');
 const HQAccount = require('../models/HQAccount');
 const EmployeeLedger = require('../models/EmployeeLedger');
 const BranchLedger = require('../models/BranchLedger');
+const cache = require('../utils/cache');
 
 // Helper to enqueue email safely
 const emailReceipt = async (receiptId, customerEmail) => {
@@ -250,6 +251,9 @@ exports.createReceipt = catchAsync(async (req, res, next) => {
 
   // Send email for all receipts
   await emailReceipt(receipt._id, receipt.customerEmail);
+
+  // Invalidate dashboard cache
+  await cache.invalidateStats();
 
   res.status(201).json({
     success: true,

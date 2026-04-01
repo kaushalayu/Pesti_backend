@@ -5,6 +5,7 @@ const catchAsync = require('../utils/catchAsync');
 const { paginate } = require('../utils/paginate');
 const { generateJobCardPdf } = require('../services/pdfService');
 const emailQueue = require('../jobs/emailQueue');
+const cache = require('../utils/cache');
 
 // @desc    Create a new Service Form (Draft)
 // @route   POST /api/forms
@@ -29,6 +30,9 @@ exports.createForm = catchAsync(async (req, res, next) => {
   }
 
   const newForm = await ServiceForm.create(formPayload);
+
+  // Invalidate dashboard cache
+  await cache.invalidateStats();
 
   res.status(201).json({
     success: true,
@@ -62,8 +66,9 @@ exports.getForms = catchAsync(async (req, res, next) => {
   }
 
   let query = ServiceForm.find(queryObj)
-    .populate('employeeId', 'name employeeId')
-    .populate('branchId', 'branchName branchCode');
+    .select('-__v -updatedAt')
+    .populate('employeeId', 'name employeeId phone')
+    .populate('branchId', 'branchName branchCode city');
 
   if (req.query.sort) {
     const sortBy = req.query.sort.split(',').join(' ');
@@ -212,6 +217,9 @@ exports.submitForm = catchAsync(async (req, res, next) => {
       console.warn('Failed to enqueue job card email:', error.message);
     }
   }
+
+  // Invalidate dashboard cache
+  await cache.invalidateStats();
 
   res.status(200).json({
     success: true,
