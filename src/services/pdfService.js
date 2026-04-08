@@ -1,12 +1,12 @@
-const fs = require('fs');
-const path = require('path');
-const puppeteer = require('puppeteer');
+const fs = require("fs");
+const path = require("path");
+const puppeteer = require("puppeteer");
 
-const LOGO_PATH = path.join(__dirname, '../../pest/public/logo.jpg');
+const LOGO_PATH = path.join(__dirname, "../../pest/public/logo.jpg");
 
 const getCompanySettings = async () => {
   try {
-    const CompanySettings = require('../models/CompanySettings');
+    const CompanySettings = require("../models/CompanySettings");
     let settings = await CompanySettings.findOne();
     if (!settings) {
       settings = await CompanySettings.create({});
@@ -25,7 +25,7 @@ const getLogoBase64 = async () => {
     }
     if (fs.existsSync(LOGO_PATH)) {
       const buffer = fs.readFileSync(LOGO_PATH);
-      return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+      return `data:image/jpeg;base64,${buffer.toString("base64")}`;
     }
   } catch (e) {}
   return null;
@@ -36,46 +36,52 @@ const getCompanyInfo = async () => {
     const settings = await getCompanySettings();
     if (settings) {
       return {
-        name: settings.companyName || 'SAFE HOME PESTOCHEM INDIA PVT. LTD.',
-        email: settings.email || 'enquiry@safehomepestochem.in',
-        phone: settings.phone || '25709',
-        website: settings.website || 'www.safehomepestochem.com',
-        headOffice: settings.headOffice?.address || '',
-        regionalOffice: settings.regionalOffice?.address || '',
-        cin: settings.cinNo || '',
-        tan: settings.tanNo || '',
-        pan: settings.panNo || '',
-        gst: settings.gstNo || ''
+        name: settings.companyName || "SAFE HOME PESTOCHEM INDIA PVT. LTD.",
+        email: settings.email || "enquiry@safehomepestochem.in",
+        phone: settings.phone || "25709",
+        website: settings.website || "www.safehomepestochem.com",
+        headOffice: settings.headOffice?.address || "",
+        regionalOffice: settings.regionalOffice?.address || "",
+        cin: settings.cinNo || "",
+        tan: settings.tanNo || "",
+        pan: settings.panNo || "",
+        gst: settings.gstNo || "",
       };
     }
   } catch (e) {}
   return {
-    name: 'SAFE HOME PESTOCHEM INDIA PVT. LTD.',
-    email: 'enquiry@safehomepestochem.in',
-    phone: '25709',
-    website: 'www.safehomepestochem.com',
-    headOffice: 'House No. 780-J, Chaksa Husain, Pachpedwa, Ramjanki Nagar, Basaratpur, Gorakhpur-273004',
-    regionalOffice: 'H. No-68, Pink City, Sec. 06, Jankipuram Extn., Near Kendria Vihar Colony, Lucknow-226021',
-    cin: 'U52100UP2022PTC164278',
-    tan: 'ALDS10486A',
-    pan: 'ABICS5318P',
-    gst: ''
+    name: "SAFE HOME PESTOCHEM INDIA PVT. LTD.",
+    email: "enquiry@safehomepestochem.in",
+    phone: "25709",
+    website: "www.safehomepestochem.com",
+    headOffice:
+      "House No. 780-J, Chaksa Husain, Pachpedwa, Ramjanki Nagar, Basaratpur, Gorakhpur-273004",
+    regionalOffice:
+      "H. No-68, Pink City, Sec. 06, Jankipuram Extn., Near Kendria Vihar Colony, Lucknow-226021",
+    cin: "U52100UP2022PTC164278",
+    tan: "ALDS10486A",
+    pan: "ABICS5318P",
+    gst: "",
   };
 };
 
 const formatCurrency = (num) => {
-  if (!num && num !== 0) return 'Rs. 0';
-  return 'Rs. ' + Number(num).toLocaleString('en-IN');
+  if (!num && num !== 0) return "Rs. 0";
+  return "Rs. " + Number(num).toLocaleString("en-IN");
 };
 
 const formatNum = (num) => {
-  if (!num && num !== 0) return '0';
-  return Number(num).toLocaleString('en-IN');
+  if (!num && num !== 0) return "0";
+  return Number(num).toLocaleString("en-IN");
 };
 
 const formatDate = (date) => {
-  if (!date) return '-';
-  return new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  if (!date) return "-";
+  return new Date(date).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 };
 
 const getJobCardHTML = async (data) => {
@@ -86,10 +92,10 @@ const getJobCardHTML = async (data) => {
   const schedule = data.schedule || {};
   const premises = data.premises || {};
   const attDetails = data.attDetails || {};
-  
+
   const floors = premises.floors || [];
   const amcServices = data.amcServices || [];
-  
+
   const totalArea = premises.totalArea || 0;
   const baseAmount = pricing.baseAmount || 0;
   const gstAmount = pricing.gstAmount || 0;
@@ -97,7 +103,7 @@ const getJobCardHTML = async (data) => {
   const finalAmount = pricing.finalAmount || 0;
   const advancePaid = data.billing?.advance || 0;
   const balanceDue = finalAmount - advancePaid;
-  
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -150,7 +156,7 @@ const getJobCardHTML = async (data) => {
 <body>
   <div class="container">
     <div class="header">
-      ${logo ? `<img src="${logo}" class="logo" alt="Logo">` : ''}
+      ${logo ? `<img src="${logo}" class="logo" alt="Logo">` : ""}
       <div class="company-info">
         <h1>${companyInfo.name}</h1>
         <p>Professional Pest Control Services | ISO 9001:2015 Certified</p>
@@ -163,92 +169,109 @@ const getJobCardHTML = async (data) => {
     <div class="title-bar">
       <h2>SERVICE JOB CARD</h2>
       <div class="meta">
-        <strong>${data.orderNo || 'DRAFT'}</strong> | ${formatDate(data.createdAt)} | <span class="badge">${data.status || 'SUBMITTED'}</span>
+        <strong>${data.orderNo || "DRAFT"}</strong> | ${formatDate(data.createdAt)} | <span class="badge">${data.status || "SUBMITTED"}</span>
       </div>
     </div>
     <div class="two-col">
       <div class="section">
         <div class="section-title">Customer Information</div>
         <div class="grid-2">
-          <div class="info-box"><div class="info-label">Name</div><div class="info-value">${cust.title || ''} ${cust.name || '-'}</div></div>
-          <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${cust.phone || '-'}</div></div>
-          <div class="info-box"><div class="info-label">Email</div><div class="info-value" style="font-size:10px">${cust.email || '-'}</div></div>
-          <div class="info-box"><div class="info-label">GST No</div><div class="info-value">${cust.gstNo || '-'}</div></div>
+          <div class="info-box"><div class="info-label">Name</div><div class="info-value">${cust.title || ""} ${cust.name || "-"}</div></div>
+          <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${cust.phone || "-"}</div></div>
+          <div class="info-box"><div class="info-label">Email</div><div class="info-value" style="font-size:10px">${cust.email || "-"}</div></div>
+          <div class="info-box"><div class="info-label">GST No</div><div class="info-value">${cust.gstNo || "-"}</div></div>
         </div>
-        <div class="info-box" style="margin-top:12px"><div class="info-label">Address</div><div class="info-value" style="font-size:11px">${cust.address || '-'}, ${cust.city || ''}</div></div>
+        <div class="info-box" style="margin-top:12px"><div class="info-label">Address</div><div class="info-value" style="font-size:11px">${cust.address || "-"}, ${cust.city || ""}</div></div>
       </div>
       <div class="section">
         <div class="section-title">Service Details</div>
         <div class="grid-2">
-          <div class="info-box"><div class="info-label">Branch</div><div class="info-value">${data.branchId?.branchName || '-'}</div></div>
-          <div class="info-box"><div class="info-label">Category</div><div class="info-value">${data.serviceCategory || '-'}</div></div>
-          <div class="info-box"><div class="info-label">Service Type</div><div class="info-value highlight">${data.serviceType || 'AMC'}</div></div>
-          <div class="info-box"><div class="info-label">Premises</div><div class="info-value">${premises.type || '-'}</div></div>
-          <div class="info-box"><div class="info-label">Schedule Date</div><div class="info-value">${schedule.date || '-'}</div></div>
-          <div class="info-box"><div class="info-label">Schedule Time</div><div class="info-value">${schedule.time || '-'}</div></div>
+          <div class="info-box"><div class="info-label">Branch</div><div class="info-value">${data.branchId?.branchName || "-"}</div></div>
+          <div class="info-box"><div class="info-label">Category</div><div class="info-value">${data.serviceCategory || "-"}</div></div>
+          <div class="info-box"><div class="info-label">Service Type</div><div class="info-value highlight">${data.serviceType || "AMC"}</div></div>
+          <div class="info-box"><div class="info-label">Premises</div><div class="info-value">${premises.type || "-"}</div></div>
+          <div class="info-box"><div class="info-label">Schedule Date</div><div class="info-value">${schedule.date || "-"}</div></div>
+          <div class="info-box"><div class="info-label">Schedule Time</div><div class="info-value">${schedule.time || "-"}</div></div>
         </div>
       </div>
     </div>
-    ${(data.serviceType === 'AMC' || data.serviceType === 'BOTH') && amcServices.length > 0 ? `
+    ${
+      (data.serviceType === "AMC" || data.serviceType === "BOTH") &&
+      amcServices.length > 0
+        ? `
     <div class="section">
       <div class="section-title">AMC Services (Pest Control)</div>
-      <div class="services-list">${amcServices.map(s => `<span class="service-tag">${s}</span>`).join('')}</div>
+      <div class="services-list">${amcServices.map((s) => `<span class="service-tag">${s}</span>`).join("")}</div>
       <div class="grid-3" style="margin-top:15px">
         <div class="info-box"><div class="info-label">Rate per Sq.Ft.</div><div class="info-value">${formatCurrency(data.ratePerSqft || 0)}</div></div>
         <div class="info-box"><div class="info-label">Total Area</div><div class="info-value">${formatNum(totalArea)} Sq.Ft.</div></div>
-        <div class="info-box"><div class="info-label">Reference</div><div class="info-value">${data.reference || 'Walk-in'}</div></div>
+        <div class="info-box"><div class="info-label">Reference</div><div class="info-value">${data.reference || "Walk-in"}</div></div>
       </div>
-    </div>` : ''}
-    ${(data.serviceType === 'ATT' || data.serviceType === 'BOTH') ? `
+    </div>`
+        : ""
+    }
+    ${
+      data.serviceType === "ATT" || data.serviceType === "BOTH"
+        ? `
     <div class="section att-section">
       <div class="section-title">ATT Services (Anti Termite Treatment)</div>
       <div class="grid-4">
-        <div class="info-box"><div class="info-label">Treatment</div><div class="info-value highlight">${attDetails.prePost === 'POST' ? 'POST-TREATMENT' : 'PRE-TREATMENT'}</div></div>
-        <div class="info-box"><div class="info-label">Treatment Types</div><div class="info-value" style="font-size:10px">${(attDetails.treatmentTypes || []).join(', ') || '-'}</div></div>
-        <div class="info-box"><div class="info-label">Chemicals</div><div class="info-value" style="font-size:10px">${(attDetails.chemicals || []).join(', ') || '-'}</div></div>
-        <div class="info-box"><div class="info-label">Warranty</div><div class="info-value" style="color:#dc2626">${attDetails.warranty || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Treatment</div><div class="info-value highlight">${attDetails.prePost === "POST" ? "POST-TREATMENT" : "PRE-TREATMENT"}</div></div>
+        <div class="info-box"><div class="info-label">Treatment Types</div><div class="info-value" style="font-size:10px">${(attDetails.treatmentTypes || []).join(", ") || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Chemicals</div><div class="info-value" style="font-size:10px">${(attDetails.chemicals || []).join(", ") || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Warranty</div><div class="info-value" style="color:#dc2626">${attDetails.warranty || "-"}</div></div>
       </div>
       <div class="grid-4" style="margin-top:12px">
-        <div class="info-box"><div class="info-label">Methods</div><div class="info-value" style="font-size:10px">${(attDetails.methods || []).join(', ') || '-'}</div></div>
-        <div class="info-box"><div class="info-label">Base Solution</div><div class="info-value" style="font-size:10px">${(attDetails.baseSolutions || []).join(', ') || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Methods</div><div class="info-value" style="font-size:10px">${(attDetails.methods || []).join(", ") || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Base Solution</div><div class="info-value" style="font-size:10px">${(attDetails.baseSolutions || []).join(", ") || "-"}</div></div>
         <div class="info-box"><div class="info-label">Rate per Sq.Ft.</div><div class="info-value">${formatCurrency(data.ratePerSqft || 0)}</div></div>
         <div class="info-box"><div class="info-label">Total Area</div><div class="info-value">${formatNum(totalArea)} Sq.Ft.</div></div>
       </div>
-    </div>` : ''}
-    ${floors.length > 0 ? `
+    </div>`
+        : ""
+    }
+    ${
+      floors.length > 0
+        ? `
     <div class="section">
       <div class="section-title">Premises - Floor Details</div>
       <table>
         <thead><tr><th>Floor</th><th>Length (ft)</th><th>Width (ft)</th><th>Area (sqft)</th></tr></thead>
         <tbody>
-          ${floors.map(f => `<tr><td>${f.label || 'Floor'}</td><td>${formatNum(f.length)}</td><td>${formatNum(f.width)}</td><td>${formatNum(f.area)}</td></tr>`).join('')}
+          ${floors.map((f) => `<tr><td>${f.label || "Floor"}</td><td>${formatNum(f.length)}</td><td>${formatNum(f.width)}</td><td>${formatNum(f.area)}</td></tr>`).join("")}
           <tr class="total-row"><td colspan="3">TOTAL AREA</td><td>${formatNum(totalArea)} Sq.Ft.</td></tr>
         </tbody>
       </table>
-    </div>` : ''}
+    </div>`
+        : ""
+    }
     <div class="section">
       <div class="section-title">Price Details</div>
       <div class="pricing-box">
         <div class="pricing-row"><span>Base Amount</span><span>${formatCurrency(baseAmount)}</span></div>
-        ${pricing.gstPercent > 0 ? `<div class="pricing-row"><span>GST (${pricing.gstPercent}%)</span><span>+ ${formatCurrency(gstAmount)}</span></div>` : ''}
-        ${pricing.discountPercent > 0 ? `<div class="pricing-row"><span>Discount (${pricing.discountPercent}%)</span><span>- ${formatCurrency(discountAmount)}</span></div>` : ''}
+        ${pricing.gstPercent > 0 ? `<div class="pricing-row"><span>GST (${pricing.gstPercent}%)</span><span>+ ${formatCurrency(gstAmount)}</span></div>` : ""}
+        ${pricing.discountPercent > 0 ? `<div class="pricing-row"><span>Discount (${pricing.discountPercent}%)</span><span>- ${formatCurrency(discountAmount)}</span></div>` : ""}
         <div class="pricing-total"><span>TOTAL AMOUNT</span><span>${formatCurrency(finalAmount)}</span></div>
-        ${advancePaid > 0 ? `<div style="margin-top:12px; padding-top:12px; border-top:1px dashed rgba(255,255,255,0.3);"><div class="pricing-row"><span>Advance Paid</span><span>${formatCurrency(advancePaid)}</span></div><div class="pricing-row"><span>Balance Due</span><span>${formatCurrency(balanceDue)}</span></div></div>` : ''}
+        ${advancePaid > 0 ? `<div style="margin-top:12px; padding-top:12px; border-top:1px dashed rgba(255,255,255,0.3);"><div class="pricing-row"><span>Advance Paid</span><span>${formatCurrency(advancePaid)}</span></div><div class="pricing-row"><span>Balance Due</span><span>${formatCurrency(balanceDue)}</span></div></div>` : ""}
       </div>
     </div>
-    ${data.employeeId?.name ? `
+    ${
+      data.employeeId?.name
+        ? `
     <div class="section">
       <div class="section-title">Field Executive</div>
       <div class="grid-2">
         <div class="info-box"><div class="info-label">Name</div><div class="info-value">${data.employeeId.name}</div></div>
-        <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${data.employeeId.phone || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${data.employeeId.phone || "-"}</div></div>
       </div>
-    </div>` : ''}
+    </div>`
+        : ""
+    }
     <div class="signatures">
-      <div class="sig-box"><div class="sig-label">Executive Signature</div><div class="sig-area"></div><div class="sig-name">${data.employeeId?.name || 'Executive'}</div><div class="sig-date">Date: ___________</div></div>
-      <div class="sig-box"><div class="sig-label">Customer Signature</div><div class="sig-area"></div><div class="sig-name">${cust.name || 'Customer'}</div><div class="sig-date">Date: ___________</div></div>
+      <div class="sig-box"><div class="sig-label">Executive Signature</div><div class="sig-area"></div><div class="sig-name">${data.employeeId?.name || "Executive"}</div><div class="sig-date">Date: ___________</div></div>
+      <div class="sig-box"><div class="sig-label">Customer Signature</div><div class="sig-area"></div><div class="sig-name">${cust.name || "Customer"}</div><div class="sig-date">Date: ___________</div></div>
     </div>
-    <div class="footer"><p>This is a computer-generated document. Generated on: ${new Date().toLocaleString('en-IN')}</p><p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p></div>
+    <div class="footer"><p>This is a computer-generated document. Generated on: ${new Date().toLocaleString("en-IN")}</p><p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p><p style="font-size:8px; margin-top:8px; line-height:1.4; opacity:0.85">Terms & Conditions: Service is subject to our standard terms. Please retain this document for future reference. Payments once made are non-refundable unless agreed in writing by authorized personnel.</p></div>
   </div>
 </body>
 </html>`;
@@ -290,7 +313,7 @@ const getReceiptHTML = async (data) => {
 <body>
   <div class="container">
     <div class="header">
-      ${logo ? `<img src="${logo}" class="logo" alt="Logo">` : ''}
+      ${logo ? `<img src="${logo}" class="logo" alt="Logo">` : ""}
       <div class="company-info">
         <h1>${companyInfo.name}</h1>
         <p>Professional Pest Control Services | ISO 9001:2015 Certified</p>
@@ -304,17 +327,17 @@ const getReceiptHTML = async (data) => {
     <div class="section">
       <div class="section-title">Receipt Details</div>
       <div class="grid-2">
-        <div class="info-box"><div class="info-label">Receipt No</div><div class="info-value">${data.receiptNo || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Receipt No</div><div class="info-value">${data.receiptNo || "-"}</div></div>
         <div class="info-box"><div class="info-label">Date</div><div class="info-value">${formatDate(data.paymentDate)}</div></div>
-        <div class="info-box"><div class="info-label">Service Type</div><div class="info-value">${data.serviceType || '-'}</div></div>
-        <div class="info-box"><div class="info-label">Branch</div><div class="info-value">${data.branchId?.branchName || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Service Type</div><div class="info-value">${data.serviceType || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Branch</div><div class="info-value">${data.branchId?.branchName || "-"}</div></div>
       </div>
     </div>
     <div class="section">
       <div class="section-title">Customer Information</div>
       <div class="grid-2">
-        <div class="info-box"><div class="info-label">Name</div><div class="info-value">${data.customerName || '-'}</div></div>
-        <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${data.customerPhone || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Name</div><div class="info-value">${data.customerName || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${data.customerPhone || "-"}</div></div>
       </div>
     </div>
     <div class="section">
@@ -322,16 +345,16 @@ const getReceiptHTML = async (data) => {
       <div class="payment-box">
         <div style="font-size:11px;opacity:0.9">Amount Received</div>
         <div class="amount">${formatCurrency(data.advancePaid || 0)}</div>
-        <div style="font-size:11px;margin-top:5px">via ${data.paymentMode || 'Cash'}${data.transactionId ? ' | Ref: ' + data.transactionId : ''}</div>
+        <div style="font-size:11px;margin-top:5px">via ${data.paymentMode || "Cash"}${data.transactionId ? " | Ref: " + data.transactionId : ""}</div>
       </div>
       <div class="pricing-box">
         <div class="pricing-row"><span>Total Amount</span><span>${formatCurrency(data.totalAmount || 0)}</span></div>
         <div class="pricing-row"><span>Paid Amount</span><span style="color:#0d7a4a">${formatCurrency(data.advancePaid || 0)}</span></div>
         <div class="pricing-row"><span>Balance Due</span><span style="color:#dc2626">${formatCurrency(data.balanceDue || 0)}</span></div>
-        <div class="pricing-total"><span>STATUS</span><span>${(data.balanceDue || 0) <= 0 ? 'PAID' : 'PARTIALLY PAID'}</span></div>
+        <div class="pricing-total"><span>STATUS</span><span>${(data.balanceDue || 0) <= 0 ? "PAID" : "PARTIALLY PAID"}</span></div>
       </div>
     </div>
-    <div class="footer"><p>This is a computer-generated receipt. Generated on: ${new Date().toLocaleString('en-IN')}</p><p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p></div>
+    <div class="footer"><p>This is a computer-generated receipt. Generated on: ${new Date().toLocaleString("en-IN")}</p><p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p><p style="font-size:8px; margin-top:8px; line-height:1.4; opacity:0.85">Terms & Conditions: Payment is subject to our standard terms. Please retain this document for future reference. Payments once made are non-refundable unless agreed in writing by authorized personnel.</p></div>
   </div>
 </body>
 </html>`;
@@ -358,11 +381,11 @@ const getEnquiryListHTML = (enquiries) => {
 </head>
 <body>
   <div class="container">
-    <div class="header"><h1>ENQUIRY REPORT</h1><p>Total Records: ${enquiries.length} | Generated: ${new Date().toLocaleString('en-IN')}</p></div>
+    <div class="header"><h1>ENQUIRY REPORT</h1><p>Total Records: ${enquiries.length} | Generated: ${new Date().toLocaleString("en-IN")}</p></div>
     <table>
       <thead><tr><th>ID</th><th>Customer</th><th>Mobile</th><th>Service</th><th>City</th><th>Status</th><th>Priority</th><th>Source</th></tr></thead>
       <tbody>
-        ${enquiries.map(e => `<tr><td>${e.enquiryId || '-'}</td><td>${e.customerName || '-'}</td><td>${e.mobile || '-'}</td><td>${e.serviceType || '-'}</td><td>${e.city || '-'}</td><td>${e.status || '-'}</td><td>${e.priority || '-'}</td><td>${e.source || '-'}</td></tr>`).join('')}
+        ${enquiries.map((e) => `<tr><td>${e.enquiryId || "-"}</td><td>${e.customerName || "-"}</td><td>${e.mobile || "-"}</td><td>${e.serviceType || "-"}</td><td>${e.city || "-"}</td><td>${e.status || "-"}</td><td>${e.priority || "-"}</td><td>${e.source || "-"}</td></tr>`).join("")}
       </tbody>
     </table>
     <div class="footer">SAFE HOME PESTOCHEM INDIA PVT. LTD.</div>
@@ -372,12 +395,22 @@ const getEnquiryListHTML = (enquiries) => {
 };
 
 exports.generateJobCardPdf = async (formDoc) => {
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
   try {
     const page = await browser.newPage();
     const html = await getJobCardHTML(formDoc);
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
+    await page.setContent(html, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "10mm", bottom: "10mm", left: "10mm", right: "10mm" },
+    });
     await browser.close();
     return Buffer.from(pdf);
   } catch (error) {
@@ -387,12 +420,22 @@ exports.generateJobCardPdf = async (formDoc) => {
 };
 
 exports.generateReceiptPdf = async (receiptDoc) => {
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
   try {
     const page = await browser.newPage();
     const html = await getReceiptHTML(receiptDoc);
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
+    await page.setContent(html, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "10mm", bottom: "10mm", left: "10mm", right: "10mm" },
+    });
     await browser.close();
     return Buffer.from(pdf);
   } catch (error) {
@@ -402,11 +445,21 @@ exports.generateReceiptPdf = async (receiptDoc) => {
 };
 
 exports.generateEnquiryListPdf = async (enquiries) => {
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
   try {
     const page = await browser.newPage();
-    await page.setContent(getEnquiryListHTML(enquiries), { waitUntil: 'networkidle0' });
-    const pdf = await page.pdf({ format: 'A4', landscape: true, printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
+    await page.setContent(getEnquiryListHTML(enquiries), {
+      waitUntil: "networkidle0",
+    });
+    const pdf = await page.pdf({
+      format: "A4",
+      landscape: true,
+      printBackground: true,
+      margin: { top: "10mm", bottom: "10mm", left: "10mm", right: "10mm" },
+    });
     await browser.close();
     return Buffer.from(pdf);
   } catch (error) {
