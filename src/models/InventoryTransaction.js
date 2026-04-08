@@ -6,7 +6,7 @@ const inventoryTransactionSchema = new mongoose.Schema(
     txnId: { type: String, unique: true },
     txnType: { 
       type: String, 
-      enum: ['PURCHASE', 'TRANSFER_TO_BRANCH', 'TRANSFER_TO_EMPLOYEE', 'USAGE', 'RETURN', 'STOCK_ADJUSTMENT', 'PAYMENT'], 
+      enum: ['PURCHASE', 'TRANSFER_TO_BRANCH', 'TRANSFER_TO_EMPLOYEE', 'USAGE', 'RETURN', 'STOCK_ADJUSTMENT', 'PAYMENT', 'DISTRIBUTE_TO_EMPLOYEE', 'RETURN_FROM_EMPLOYEE'], 
     },
     chemicalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chemical' },
     
@@ -25,7 +25,7 @@ const inventoryTransactionSchema = new mongoose.Schema(
     
     type: { 
       type: String, 
-      enum: ['STOCK_ADD', 'ASSIGNED', 'USAGE', 'RETURNED', 'PAYMENT', 'PURCHASE', 'TRANSFER'], 
+      enum: ['STOCK_ADD', 'ASSIGNED', 'USAGE', 'RETURNED', 'PAYMENT', 'PURCHASE', 'TRANSFER', 'DISTRIBUTE'], 
     },
     
     jobId: { type: String },

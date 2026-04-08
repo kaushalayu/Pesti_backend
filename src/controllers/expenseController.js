@@ -6,44 +6,56 @@ const BranchLedger = require('../models/BranchLedger');
 const AppError = require('../utils/AppError');
 const catchAsync = require('../utils/catchAsync');
 const emailQueue = require('../jobs/emailQueue');
+const cache = require('../utils/cache');
 
 const sendExpenseNotification = async (expense, status, rejectionReason = null) => {
-  const notificationData = {
-    userId: expense.employeeId,
-    relatedId: expense._id,
-    relatedType: 'Expense',
-    data: {
-      amount: expense.amount,
-      category: expense.category,
-      status,
-      rejectionReason,
-    },
-  };
-
-  if (status === 'APPROVED') {
-    notificationData.type = 'EXPENSE_APPROVED';
-    notificationData.title = 'Expense Approved!';
-    notificationData.message = `Your expense of ₹${expense.amount} for ${expense.category} has been approved.`;
-  } else if (status === 'REJECTED') {
-    notificationData.type = 'EXPENSE_REJECTED';
-    notificationData.title = 'Expense Rejected';
-    notificationData.message = `Your expense of ₹${expense.amount} for ${expense.category} has been rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`;
-  }
-
-  await Notification.create(notificationData);
-
   try {
-    await emailQueue.add({
-      type: status === 'APPROVED' ? 'EXPENSE_APPROVED' : 'EXPENSE_REJECTED',
+    let type = 'GENERAL';
+    let title = 'Expense Update';
+    let message = `Expense of ₹${expense.amount} for ${expense.category} has been updated.`;
+
+    if (status === 'APPROVED') {
+      type = 'EXPENSE_APPROVED';
+      title = 'Expense Approved!';
+      message = `Your expense of ₹${expense.amount} for ${expense.category} has been approved.`;
+    } else if (status === 'REJECTED') {
+      type = 'EXPENSE_REJECTED';
+      title = 'Expense Rejected';
+      message = `Your expense of ₹${expense.amount} for ${expense.category} has been rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`;
+    }
+
+    const notificationData = {
+      userId: expense.employeeId,
+      type,
+      title,
+      message,
+      relatedId: expense._id,
+      relatedType: 'Expense',
       data: {
-        expenseId: expense._id.toString(),
-        employeeId: expense.employeeId.toString(),
+        amount: expense.amount,
+        category: expense.category,
         status,
         rejectionReason,
       },
-    });
+    };
+
+    await Notification.create(notificationData);
+
+    try {
+      await emailQueue.add({
+        type: status === 'APPROVED' ? 'EXPENSE_APPROVED' : status === 'REJECTED' ? 'EXPENSE_REJECTED' : 'GENERAL',
+        data: {
+          expenseId: expense._id.toString(),
+          employeeId: expense.employeeId.toString(),
+          status,
+          rejectionReason,
+        },
+      });
+    } catch (error) {
+      console.warn('Email notification failed:', error.message);
+    }
   } catch (error) {
-    console.warn('Email notification failed:', error.message);
+    console.warn('Notification creation failed:', error.message);
   }
 };
 
@@ -63,6 +75,9 @@ exports.createExpense = catchAsync(async (req, res, next) => {
   const populatedExpense = await Expense.findById(expense._id)
     .populate('employeeId', 'name email')
     .populate('branchId', 'branchName branchCode');
+
+  // Invalidate dashboard cache for instant UI updates
+  await cache.invalidateStats();
 
   res.status(201).json({ success: true, data: populatedExpense });
 });
@@ -245,15 +260,14 @@ exports.updateExpenseStatus = catchAsync(async (req, res, next) => {
     
     // HQ Account - Expense Reimbursement
     await HQAccount.create({
-      type: 'EXPENSE',
-      source: 'EXPENSE_REIMBURSEMENT',
+      type: 'DEBIT',
+      source: 'EXPENSE',
       amount: expense.amount,
       balanceAfter: 0,
       relatedId: expense._id,
       relatedModel: 'Expense',
       branchId: expense.branchId,
       description: `Expense reimbursement: ${expense.description} (${expense.category})`,
-      paymentMode: 'CASH',
       performedBy: req.user._id,
       date: new Date()
     });
@@ -309,6 +323,9 @@ exports.updateExpenseStatus = catchAsync(async (req, res, next) => {
 
   await sendExpenseNotification(expense, status, rejectionReason);
 
+  // Invalidate dashboard cache for instant UI updates
+  await cache.invalidateStats();
+
   const populatedExpense = await Expense.findById(expense._id)
     .populate('employeeId', 'name email')
     .populate('approvedBy', 'name');
@@ -328,6 +345,10 @@ exports.deleteExpense = catchAsync(async (req, res, next) => {
   }
 
   await Expense.findByIdAndDelete(req.params.id);
+
+  // Invalidate dashboard cache for instant UI updates
+  await cache.invalidateStats();
+
   res.status(200).json({ success: true, message: 'Expense deleted' });
 });
 

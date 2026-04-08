@@ -46,7 +46,7 @@ const ledgerSchema = new mongoose.Schema(
     },
     relatedModel: {
       type: String,
-      enum: ['Receipt', 'Expense', 'Collection', 'Inventory', 'StockTransfer', 'TravelLog', null],
+      enum: ['Receipt', 'Expense', 'Collection', 'Inventory', 'StockTransfer', 'TravelLog', 'TaskAssignment', 'ServiceForm', null],
       default: null
     },
     description: {

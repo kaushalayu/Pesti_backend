@@ -60,6 +60,13 @@ exports.createReceipt = catchAsync(async (req, res, next) => {
   const amcId = req.body?.amcId || null;
   const formId = req.body?.formId || null;
   let amcData = null;
+  let form = null;
+  
+  // Fetch form if formId is provided (to get branchId and billing info)
+  if (formId) {
+    const ServiceForm = require('../models/ServiceForm');
+    form = await ServiceForm.findById(formId).populate('branchId');
+  }
   if (amcId && (req.body?.serviceType === 'AMC' || req.body?.serviceType === 'BOTH')) {
     amcData = await AMC.findById(amcId);
   }
@@ -75,11 +82,8 @@ exports.createReceipt = catchAsync(async (req, res, next) => {
   // Calculate amounts (rounded up - no decimals)
   const baseAmount = Math.ceil(parseFloat(req.body?.baseAmount) || (amcAmount + attAmount));
   const gstPercent = parseFloat(req.body?.gstPercent) || 18;
-  const discountPercent = parseFloat(req.body?.discountPercent) || 0;
   const gstAmount = Math.ceil(baseAmount * gstPercent / 100);
-  const afterGst = baseAmount + gstAmount;
-  const discountAmount = Math.ceil(afterGst * discountPercent / 100);
-  const totalAmount = Math.ceil(afterGst - discountAmount);
+  const totalAmount = Math.ceil(parseFloat(req.body?.totalAmount) || (baseAmount + gstAmount));
   const advancePaid = Math.ceil(parseFloat(req.body?.advancePaid) || 0);
   const balanceDue = Math.ceil(totalAmount - advancePaid);
 
@@ -112,28 +116,29 @@ exports.createReceipt = catchAsync(async (req, res, next) => {
     baseAmount: baseAmount,
     gstPercent: gstPercent,
     gstAmount: gstAmount,
-    discountPercent: discountPercent,
-    discountAmount: discountAmount,
     totalAmount: totalAmount,
     advancePaid: advancePaid,
     balanceDue: balanceDue,
     employeeId: req.user._id,
-    branchId: req.body?.branchId || req.user.branchId,
   };
 
-  // Validate branchId - must have branchId from either form body or user
+  // Validate and set branchId - check multiple sources
   const userBranchId = req.user.branchId;
   const bodyBranchId = req.body?.branchId;
   
+  // Get branch from form if available
+  let formBranchId = null;
+  if (form) {
+    formBranchId = typeof form.branchId === 'object' ? form.branchId._id : form.branchId;
+  }
+  
+  // Priority: body branchId > user branchId > form's branchId
+  payload.branchId = bodyBranchId || 
+    (userBranchId ? (typeof userBranchId === 'object' ? (userBranchId._id || userBranchId) : userBranchId) : null) ||
+    formBranchId;
+  
   if (!payload.branchId) {
-    // If user has a branch, use it
-    if (userBranchId) {
-      payload.branchId = typeof userBranchId === 'object' ? userBranchId._id || userBranchId : userBranchId;
-    } else if (bodyBranchId) {
-      payload.branchId = bodyBranchId;
-    } else {
-      return next(new AppError('Branch ID is required. Please select a branch.', 400));
-    }
+    return next(new AppError('Branch ID is required. Please select a branch.', 400));
   }
 
   const branch = await Branch.findById(payload.branchId).select('branchCode');
@@ -143,122 +148,61 @@ exports.createReceipt = catchAsync(async (req, res, next) => {
   const empCode = user?.employeeId?.replace(/-/g, '').substring(0, 3) || 'S00';
   payload.receiptNo = generateUniqueId('RCP', branchCode, empCode);
 
-  // Auto-approve for EVERYONE - No approval needed!
-  payload.approvalStatus = 'APPROVED';
-  payload.approvedBy = req.user._id;
-  payload.approvedAt = new Date();
+  // Set to PENDING - requires branch admin approval first
+  payload.approvalStatus = 'PENDING';
+  payload.branchApprovalStatus = 'PENDING';
 
   const receipt = await Receipt.create(payload);
 
-  // Record in HQ Account - Customer Payment (BRANCH COLLECTION)
-  if (receipt.advancePaid > 0) {
-    await HQAccount.create({
-      type: 'INCOME',
-      source: 'CUSTOMER_RECEIPT',
-      amount: receipt.advancePaid,
-      balanceAfter: 0,
-      relatedId: receipt._id,
-      relatedModel: 'Receipt',
-      branchId: receipt.branchId,
-      customerId: receipt.customerId,
-      description: `Receipt ${receipt.receiptNo} - ${receipt.customerName} (${receipt.paymentMode})`,
-      paymentMode: receipt.paymentMode,
-      transactionRef: receipt.transactionId,
-      performedBy: req.user._id,
-      date: receipt.paymentDate || new Date()
-    });
-
-    // Record in Employee Ledger
-    const empBalance = await EmployeeLedger.getUserBalance(req.user._id);
-    await EmployeeLedger.create({
-      userId: req.user._id,
-      branchId: receipt.branchId,
-      type: 'CREDIT',
-      category: 'CUSTOMER_RECEIPT',
-      amount: receipt.advancePaid,
-      balanceAfter: empBalance.balance + receipt.advancePaid,
-      relatedId: receipt._id,
-      relatedModel: 'Receipt',
-      description: `Receipt ${receipt.receiptNo} - ${receipt.customerName}`,
-      paymentMode: receipt.paymentMode,
-      transactionRef: receipt.transactionId,
-      performedBy: req.user._id,
-      date: receipt.paymentDate || new Date()
-    });
-
-    // Record in Branch Ledger
-    const branchBalance = await BranchLedger.getBranchBalance(receipt.branchId);
-    await BranchLedger.create({
-      branchId: receipt.branchId,
-      type: 'CREDIT',
-      category: 'CUSTOMER_RECEIPT',
-      amount: receipt.advancePaid,
-      balanceAfter: branchBalance.balance + receipt.advancePaid,
-      relatedId: receipt._id,
-      relatedModel: 'Receipt',
-      employeeId: req.user._id,
-      customerId: receipt.customerId,
-      description: `Receipt ${receipt.receiptNo} - ${receipt.customerName} by ${req.user.name}`,
-      paymentMode: receipt.paymentMode,
-      transactionRef: receipt.transactionId,
-      performedBy: req.user._id,
-      date: receipt.paymentDate || new Date()
-    });
-  }
-
-  // Update ServiceForm billing if receipt is from a booking
-  if (formId && receipt.advancePaid > 0) {
+  // IMMEDIATELY update ServiceForm billing when receipt is created
+  if (formId && advancePaid > 0) {
     try {
-      const serviceForm = await ServiceForm.findById(formId);
-      if (serviceForm) {
-        // Calculate total paid from all receipts for this form
-        const allReceiptsForForm = await Receipt.find({ formId: formId, approvalStatus: 'APPROVED' });
-        const totalPaid = allReceiptsForForm.reduce((sum, r) => sum + (r.advancePaid || 0), 0);
-        const formTotal = serviceForm.pricing?.finalAmount || serviceForm.billing?.total || 0;
-        const newBalanceDue = formTotal - totalPaid;
-        
-        // Update the form's billing section
-        await ServiceForm.findByIdAndUpdate(formId, {
-          'billing.total': formTotal,
-          'billing.advance': totalPaid,
-          'billing.due': newBalanceDue,
-          'billing.paymentMode': receipt.paymentMode,
-          'billing.transactionNo': receipt.transactionId,
-          'billing.lastPaymentDate': receipt.paymentDate || new Date()
-        });
-        
-        // Update status to COMPLETED if fully paid
-        if (newBalanceDue <= 0) {
-          await ServiceForm.findByIdAndUpdate(formId, {
-            status: 'COMPLETED',
-            $push: {
-              statusHistory: {
-                status: 'COMPLETED',
-                changedBy: req.user._id,
-                changedAt: new Date(),
-                notes: `Payment completed via receipt ${receipt.receiptNo}`
-              }
-            }
-          });
-        }
-        
-        console.log(`ServiceForm ${formId} billing updated: advance=${totalPaid}, due=${newBalanceDue}`);
-      }
+      const allReceiptsForForm = await Receipt.find({ formId: formId });
+      const totalPaid = allReceiptsForForm.reduce((sum, r) => sum + (r.advancePaid || 0), 0);
+      const formTotal = form.pricing?.finalAmount || form.billing?.total || 0;
+      const newBalanceDue = formTotal - totalPaid;
+      
+      await ServiceForm.findByIdAndUpdate(formId, {
+        'billing.advance': totalPaid,
+        'billing.due': newBalanceDue,
+        'billing.lastPaymentDate': new Date()
+      });
+      
+      console.log(`ServiceForm ${formId} billing updated: advance=${totalPaid}, due=${newBalanceDue}`);
     } catch (err) {
       console.error('Error updating ServiceForm billing:', err.message);
     }
   }
 
-  // Send email for all receipts
-  await emailReceipt(receipt._id, receipt.customerEmail);
+  // NO ledger updates yet - only after both approvals
+
+  // Send email notification to branch admin
+  const branchAdminUsers = await User.find({ 
+    branchId: receipt.branchId, 
+    role: 'branch_admin',
+    isActive: true 
+  });
+  
+  for (const admin of branchAdminUsers) {
+    await Notification.create({
+      userId: admin._id,
+      type: 'RECEIPT_PENDING',
+      title: 'New Receipt Pending Approval',
+      message: `New receipt ${receipt.receiptNo} for ₹${receipt.advancePaid} from ${receipt.customerName} requires your approval.`,
+      relatedId: receipt._id,
+      relatedType: 'Receipt',
+    });
+  }
 
   // Invalidate dashboard cache
   await cache.invalidateStats();
+  await cache.del('dashboard');
+  await cache.delPattern('cache:collections:*');
 
   res.status(201).json({
     success: true,
     data: receipt,
-    autoApproved: true
+    message: 'Receipt created and pending branch admin approval'
   });
 });
 
@@ -454,13 +398,120 @@ exports.getReceiptStats = catchAsync(async (req, res, next) => {
 });
 
 // @desc    Approve Receipt
+// @route   PATCH /api/receipts/:id/branch-approve
+// @access  Private (Branch Admin only)
+exports.branchApproveReceipt = catchAsync(async (req, res, next) => {
+  const receipt = await Receipt.findById(req.params.id);
+
+  if (!receipt) {
+    return next(new AppError('Receipt not found', 404));
+  }
+
+  // Check if receipt belongs to user's branch
+  const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString();
+  const receiptBranchId = receipt.branchId?.toString();
+  
+  if (userBranchId !== receiptBranchId) {
+    return next(new AppError('You can only approve receipts from your branch', 403));
+  }
+
+  if (receipt.branchApprovalStatus === 'APPROVED') {
+    return next(new AppError('Receipt is already branch approved', 400));
+  }
+
+  if (receipt.branchApprovalStatus === 'REJECTED') {
+    return next(new AppError('Receipt was rejected by branch. Cannot approve.', 400));
+  }
+
+  // Branch approval
+  receipt.branchApprovalStatus = 'APPROVED';
+  receipt.branchApprovedBy = req.user._id;
+  receipt.branchApprovedAt = new Date();
+  receipt.approvalStatus = 'BRANCH_APPROVED';
+  await receipt.save({ validateBeforeSave: false });
+
+  // Notify super admin
+  const superAdmins = await User.find({ role: 'super_admin', isActive: true });
+  for (const admin of superAdmins) {
+    await Notification.create({
+      userId: admin._id,
+      type: 'RECEIPT_BRANCH_APPROVED',
+      title: 'Receipt Branch Approved',
+      message: `Receipt ${receipt.receiptNo} for ₹${receipt.advancePaid} has been approved by branch. Final approval pending.`,
+      relatedId: receipt._id,
+      relatedType: 'Receipt',
+    });
+  }
+
+  await Notification.create({
+    userId: receipt.employeeId,
+    type: 'RECEIPT_BRANCH_APPROVED',
+    title: 'Receipt Branch Approved',
+    message: `Your receipt ${receipt.receiptNo} has been approved by branch admin and sent for final approval.`,
+    relatedId: receipt._id,
+    relatedType: 'Receipt',
+  });
+
+  await cache.invalidateStats();
+  await cache.del('dashboard');
+
+  res.status(200).json({
+    success: true,
+    message: 'Receipt branch approved. Pending super admin final approval.',
+    data: receipt,
+  });
+});
+
+// @desc    Branch Admin Reject Receipt
+// @route   PATCH /api/receipts/:id/branch-reject
+// @access  Private (Branch Admin only)
+exports.branchRejectReceipt = catchAsync(async (req, res, next) => {
+  const { reason } = req.body;
+  const receipt = await Receipt.findById(req.params.id);
+
+  if (!receipt) {
+    return next(new AppError('Receipt not found', 404));
+  }
+
+  const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString();
+  const receiptBranchId = receipt.branchId?.toString();
+  
+  if (userBranchId !== receiptBranchId) {
+    return next(new AppError('You can only reject receipts from your branch', 403));
+  }
+
+  if (receipt.branchApprovalStatus === 'APPROVED') {
+    return next(new AppError('Receipt is already approved. Cannot reject.', 400));
+  }
+
+  receipt.branchApprovalStatus = 'REJECTED';
+  receipt.branchRejectionReason = reason || 'No reason provided';
+  receipt.approvalStatus = 'REJECTED';
+  await receipt.save();
+
+  await Notification.create({
+    userId: receipt.employeeId,
+    type: 'RECEIPT_BRANCH_REJECTED',
+    title: 'Receipt Rejected by Branch',
+    message: `Your receipt ${receipt.receiptNo} has been rejected by branch admin.${reason ? ` Reason: ${reason}` : ''}`,
+    relatedId: receipt._id,
+    relatedType: 'Receipt',
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Receipt rejected by branch',
+    data: receipt,
+  });
+});
+
+// @desc    Super Admin Final Approve Receipt
 // @route   PATCH /api/receipts/:id/approve
-// @access  Private (All users can approve)
+// @access  Private (Super Admin only)
 exports.approveReceipt = catchAsync(async (req, res, next) => {
-  // EVERYONE can approve receipts - No permission needed!
-  // if (req.user.role !== 'super_admin' && req.user.role !== 'branch_admin') {
-  //   return next(new AppError('Only Admin can approve receipts', 403));
-  // }
+  if (req.user.role !== 'super_admin') {
+    return next(new AppError('Only Super Admin can give final approval', 403));
+  }
 
   const receipt = await Receipt.findById(req.params.id);
 
@@ -472,20 +523,114 @@ exports.approveReceipt = catchAsync(async (req, res, next) => {
     return next(new AppError('Receipt is already approved', 400));
   }
 
+  if (receipt.branchApprovalStatus !== 'APPROVED') {
+    return next(new AppError('Branch approval required before final approval', 400));
+  }
+
+  // Final approval - NOW update ledgers and billing
   receipt.approvalStatus = 'APPROVED';
   receipt.approvedBy = req.user._id;
   receipt.approvedAt = new Date();
   await receipt.save({ validateBeforeSave: false });
 
-  await Notification.create({
-    userId: receipt.employeeId,
-    type: 'RECEIPT_APPROVED',
-    title: 'Receipt Approved!',
-    message: `Your receipt ${receipt.receiptNo} for ₹${receipt.totalAmount} has been approved.`,
-    relatedId: receipt._id,
-    relatedType: 'Receipt',
-  });
+  // Record in HQ Account - Customer Payment (BRANCH COLLECTION)
+  if (receipt.advancePaid > 0) {
+    await HQAccount.create({
+      type: 'INCOME',
+      source: 'CUSTOMER_RECEIPT',
+      amount: receipt.advancePaid,
+      balanceAfter: 0,
+      relatedId: receipt._id,
+      relatedModel: 'Receipt',
+      branchId: receipt.branchId,
+      customerId: receipt.customerId,
+      description: `Receipt ${receipt.receiptNo} - ${receipt.customerName} (${receipt.paymentMode})`,
+      paymentMode: receipt.paymentMode,
+      transactionRef: receipt.transactionId,
+      performedBy: req.user._id,
+      date: receipt.paymentDate || new Date()
+    });
 
+    // Record in Employee Ledger
+    const empBalance = await EmployeeLedger.getUserBalance(receipt.employeeId);
+    await EmployeeLedger.create({
+      userId: receipt.employeeId,
+      branchId: receipt.branchId,
+      type: 'CREDIT',
+      category: 'CUSTOMER_RECEIPT',
+      amount: receipt.advancePaid,
+      balanceAfter: empBalance.balance + receipt.advancePaid,
+      relatedId: receipt._id,
+      relatedModel: 'Receipt',
+      description: `Receipt ${receipt.receiptNo} - ${receipt.customerName}`,
+      paymentMode: receipt.paymentMode,
+      transactionRef: receipt.transactionId,
+      performedBy: req.user._id,
+      date: receipt.paymentDate || new Date()
+    });
+
+    // Record in Branch Ledger
+    const branchBalance = await BranchLedger.getBranchBalance(receipt.branchId);
+    await BranchLedger.create({
+      branchId: receipt.branchId,
+      type: 'CREDIT',
+      category: 'CUSTOMER_RECEIPT',
+      amount: receipt.advancePaid,
+      balanceAfter: branchBalance.balance + receipt.advancePaid,
+      relatedId: receipt._id,
+      relatedModel: 'Receipt',
+      employeeId: receipt.employeeId,
+      customerId: receipt.customerId,
+      description: `Receipt ${receipt.receiptNo} - ${receipt.customerName} by ${receipt.employeeId?.name || 'Employee'}`,
+      paymentMode: receipt.paymentMode,
+      transactionRef: receipt.transactionId,
+      performedBy: req.user._id,
+      date: receipt.paymentDate || new Date()
+    });
+
+    // Update ServiceForm billing if receipt is from a booking
+    if (receipt.formId) {
+      try {
+        const serviceForm = await ServiceForm.findById(receipt.formId);
+        if (serviceForm) {
+          const allReceiptsForForm = await Receipt.find({ 
+            formId: receipt.formId, 
+            approvalStatus: 'APPROVED' 
+          });
+          const totalPaid = allReceiptsForForm.reduce((sum, r) => sum + (r.advancePaid || 0), 0);
+          const formTotal = serviceForm.pricing?.finalAmount || serviceForm.billing?.total || 0;
+          const newBalanceDue = formTotal - totalPaid;
+          
+          await ServiceForm.findByIdAndUpdate(receipt.formId, {
+            'billing.total': formTotal,
+            'billing.advance': totalPaid,
+            'billing.due': newBalanceDue,
+            'billing.paymentMode': receipt.paymentMode,
+            'billing.transactionNo': receipt.transactionId,
+            'billing.lastPaymentDate': receipt.paymentDate || new Date()
+          });
+          
+          if (newBalanceDue <= 0) {
+            await ServiceForm.findByIdAndUpdate(receipt.formId, {
+              status: 'COMPLETED',
+              $push: {
+                statusHistory: {
+                  status: 'COMPLETED',
+                  changedBy: req.user._id,
+                  changedAt: new Date(),
+                  notes: `Payment completed via receipt ${receipt.receiptNo}`
+                }
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error updating ServiceForm billing:', err.message);
+      }
+    }
+  }
+
+  // Send email to customer
   if (receipt.customerEmail) {
     try {
       await emailQueue.add({
@@ -498,23 +643,32 @@ exports.approveReceipt = catchAsync(async (req, res, next) => {
     }
   }
 
+  // Notify employee
+  await Notification.create({
+    userId: receipt.employeeId,
+    type: 'RECEIPT_APPROVED',
+    title: 'Receipt Fully Approved!',
+    message: `Your receipt ${receipt.receiptNo} for ₹${receipt.advancePaid} has been approved. Payment has been processed.`,
+    relatedId: receipt._id,
+    relatedType: 'Receipt',
+  });
+
+  await cache.invalidateStats();
+  await cache.del('dashboard');
+  await cache.delPattern('cache:collections:*');
+
   res.status(200).json({
     success: true,
-    message: 'Receipt approved and email sent to customer',
+    message: 'Receipt fully approved. Payment processed and ledgers updated.',
     data: receipt,
   });
 });
 
 // @desc    Reject Receipt
 // @route   PATCH /api/receipts/:id/reject
-// @access  Private (Super Admin only)
+// @access  Private (Super Admin / Branch Admin)
 exports.rejectReceipt = catchAsync(async (req, res, next) => {
-  if (req.user.role !== 'super_admin' && req.user.role !== 'branch_admin') {
-    return next(new AppError('Only Admin can reject receipts', 403));
-  }
-
   const { reason } = req.body;
-
   const receipt = await Receipt.findById(req.params.id);
 
   if (!receipt) {
@@ -522,7 +676,28 @@ exports.rejectReceipt = catchAsync(async (req, res, next) => {
   }
 
   if (receipt.approvalStatus === 'APPROVED') {
-    return next(new AppError('Cannot reject an already approved receipt', 400));
+    return next(new AppError('Cannot reject an already fully approved receipt', 400));
+  }
+
+  // Role-based rejection
+  if (req.user.role === 'branch_admin') {
+    const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString();
+    const receiptBranchId = receipt.branchId?.toString();
+    
+    if (userBranchId !== receiptBranchId) {
+      return next(new AppError('You can only reject receipts from your branch', 403));
+    }
+
+    if (receipt.branchApprovalStatus === 'APPROVED') {
+      return next(new AppError('Receipt is already branch approved. Cannot reject.', 400));
+    }
+
+    receipt.branchApprovalStatus = 'REJECTED';
+    receipt.branchRejectionReason = reason || 'No reason provided';
+  } else if (req.user.role === 'super_admin') {
+    if (receipt.approvalStatus !== 'BRANCH_APPROVED') {
+      return next(new AppError('Can only reject branch-approved receipts', 400));
+    }
   }
 
   receipt.approvalStatus = 'REJECTED';
@@ -547,14 +722,30 @@ exports.rejectReceipt = catchAsync(async (req, res, next) => {
 
 // @desc    Get Pending Approvals (for dashboard)
 // @route   GET /api/receipts/pending
-// @access  Private (Super Admin only)
+// @access  Private (Branch Admin / Super Admin)
 exports.getPendingApprovals = catchAsync(async (req, res, next) => {
-  if (req.user.role !== 'super_admin') {
-    return next(new AppError('Only Super Admin can view pending approvals', 403));
+  let query = {};
+  
+  // Branch admin sees pending branch approvals for their branch
+  if (req.user.role === 'branch_admin') {
+    const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString();
+    query = {
+      branchId: branchId,
+      branchApprovalStatus: 'PENDING'
+    };
+  } 
+  // Super admin sees branch-approved receipts pending final approval
+  else if (req.user.role === 'super_admin') {
+    query = {
+      branchApprovalStatus: 'APPROVED',
+      approvalStatus: 'BRANCH_APPROVED'
+    };
+  } else {
+    return next(new AppError('Access denied', 403));
   }
 
-  const pendingReceipts = await Receipt.find({ approvalStatus: 'PENDING' })
-    .populate('employeeId', 'name')
+  const pendingReceipts = await Receipt.find(query)
+    .populate('employeeId', 'name employeeId')
     .populate('branchId', 'branchName')
     .sort('-createdAt');
 
@@ -562,6 +753,7 @@ exports.getPendingApprovals = catchAsync(async (req, res, next) => {
     success: true,
     count: pendingReceipts.length,
     data: pendingReceipts,
+    filter: req.user.role === 'branch_admin' ? 'branch_pending' : 'final_pending'
   });
 });
 
@@ -740,7 +932,7 @@ exports.generateFromForm = catchAsync(async (req, res, next) => {
 
   await Notification.create({
     userId: form.employeeId,
-    type: 'RECEIPT_GENERATED',
+    type: 'GENERAL',
     title: 'Receipt Generated',
     message: `Receipt ${receipt.receiptNo} generated for booking ${form.orderNo}. Amount: Rs. ${advancePaid}`,
     relatedId: receipt._id,

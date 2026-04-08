@@ -80,7 +80,6 @@ app.use('/api/customers', require('./routes/customerRoutes'));
 app.use('/api/employees', require('./routes/employeeRoutes'));
 app.use('/api/forms', require('./routes/formRoutes'));
 app.use('/api/receipts', require('./routes/receiptRoutes'));
-app.use('/api/enquiries', require('./routes/enquiryRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/collections', require('./routes/collectionRoutes'));
 app.use('/api/inventory', require('./routes/inventoryRoutes'));
@@ -97,9 +96,12 @@ app.use('/api/branch-transfers', require('./routes/branchTransferRoutes'));
 app.use('/api/employee-distributions', require('./routes/employeeDistributionRoutes'));
 app.use('/api/employee-inventory', require('./routes/employeeInventoryRoutes'));
 app.use('/api/stock-transfers', require('./routes/stockTransferRoutes'));
-app.use('/api/hq-account', require('./routes/hqAccountRoutes'));
 app.use('/api/ledger', require('./routes/ledgerRoutes'));
 app.use('/api/task-assignments', require('./routes/taskAssignmentRoutes'));
+app.use('/api/company-settings', require('./routes/companySettingsRoutes'));
+app.use('/api/settings', require('./routes/settingRoutes'));
+app.use('/api/leads', require('./routes/leadRoutes'));
+app.use('/api/complains', require('./routes/complainRoutes'));
 
 app.use((req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));

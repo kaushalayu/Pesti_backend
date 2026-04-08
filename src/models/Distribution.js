@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const distributionSchema = new mongoose.Schema({
   branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', required: true },
+  fromUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   items: [{
     chemicalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chemical', required: true },
@@ -18,11 +19,11 @@ const distributionSchema = new mongoose.Schema({
   notes: { type: String },
   status: { 
     type: String, 
-    enum: ['PENDING', 'DISTRIBUTED', 'PARTIALLY_RETURNED', 'FULLY_RETURNED'], 
-    default: 'DISTRIBUTED' 
+    enum: ['PENDING', 'APPROVED', 'DISTRIBUTED', 'PARTIALLY_RETURNED', 'FULLY_RETURNED', 'REJECTED'], 
+    default: 'PENDING' 
   },
   distributedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  distributedAt: { type: Date, default: Date.now },
+  distributedAt: { type: Date },
   returnedAt: { type: Date }
 }, { timestamps: true });
 

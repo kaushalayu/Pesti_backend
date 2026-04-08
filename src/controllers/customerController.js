@@ -99,7 +99,7 @@ exports.updateCustomer = catchAsync(async (req, res, next) => {
     return next(new AppError('Permission Denied', 403));
   }
 
-  customer = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+  customer = await Customer.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after', runValidators: true });
 
   res.status(200).json({ success: true, data: customer });
 });

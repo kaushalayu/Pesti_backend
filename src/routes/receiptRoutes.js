@@ -9,6 +9,10 @@ const {
   getReceiptStats,
   getPendingApprovals,
   generateFromForm,
+  branchApproveReceipt,
+  branchRejectReceipt,
+  approveReceipt,
+  rejectReceipt,
 } = require('../controllers/receiptController');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -31,5 +35,11 @@ router.route('/:id')
 
 router.get('/:id/pdf', downloadReceiptPdf);
 router.post('/:id/resend', resendReceiptEmail);
+
+// Approval routes
+router.patch('/:id/branch-approve', restrictTo('branch_admin'), branchApproveReceipt);
+router.patch('/:id/branch-reject', restrictTo('branch_admin'), branchRejectReceipt);
+router.patch('/:id/approve', restrictTo('super_admin'), approveReceipt);
+router.patch('/:id/reject', restrictTo('super_admin', 'branch_admin'), rejectReceipt);
 
 module.exports = router;

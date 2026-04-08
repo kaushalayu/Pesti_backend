@@ -6,6 +6,7 @@ const { paginate } = require('../utils/paginate');
 const { generateJobCardPdf } = require('../services/pdfService');
 const emailQueue = require('../jobs/emailQueue');
 const cache = require('../utils/cache');
+const Branch = require('../models/Branch');
 
 // @desc    Create a new Service Form (Draft)
 // @route   POST /api/forms
@@ -47,6 +48,11 @@ exports.getForms = catchAsync(async (req, res, next) => {
   const queryObj = { ...req.query };
   const excludedFields = ['page', 'sort', 'limit', 'fields'];
   excludedFields.forEach((el) => delete queryObj[el]);
+
+  // Handle comma-separated status values (e.g., ?status=SUBMITTED,SCHEDULED,COMPLETED)
+  if (queryObj.status && queryObj.status.includes(',')) {
+    queryObj.status = { $in: queryObj.status.split(',') };
+  }
 
   // Role Based Filtering
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
@@ -146,7 +152,7 @@ exports.updateForm = catchAsync(async (req, res, next) => {
   delete req.body.orderNo;
 
   const updatedForm = await ServiceForm.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
+    returnDocument: 'after',
     runValidators: true,
   });
 
@@ -171,37 +177,119 @@ exports.submitForm = catchAsync(async (req, res, next) => {
     return next(new AppError('Form is already submitted.', 400));
   }
 
-  // Ensure customer has email if we are emailing
-  if (!form.customer || !form.customer.email) {
-    // Could strictly throw an error, but we'll accept and skip email
-  }
-
   form.status = 'SUBMITTED';
   
-  // Auto-assign task to the form creator (if technician/sales/branch_admin)
-  const TaskAssignment = require('../models/TaskAssignment');
-  const userRole = req.user.role;
-  
-  let autoAssigned = false;
-  if (['technician', 'sales', 'branch_admin'].includes(userRole)) {
-    // Create automatic task assignment for the form creator
-    const existingAssignment = await TaskAssignment.findOne({
-      serviceFormId: form._id,
-      status: { $in: ['ASSIGNED', 'ACCEPTED', 'PENDING'] }
-    });
-    
-    if (!existingAssignment) {
-      await TaskAssignment.create({
-        serviceFormId: form._id,
-        assignedTo: req.user._id,
-        assignedBy: req.user._id,
+  // Form goes to unassigned list for Admin/SuperAdmin to assign to technician
+  // No auto-assignment - Admin will assign manually from Task Assignment page
+
+  // Auto-create Receipt if advance payment was made
+  let receiptCreated = null;
+  const advanceAmount = parseFloat(form.billing?.advance) || 0;
+  if (advanceAmount > 0) {
+    try {
+      const Receipt = require('../models/Receipt');
+      const HQAccount = require('../models/HQAccount');
+      const EmployeeLedger = require('../models/EmployeeLedger');
+      const BranchLedger = require('../models/BranchLedger');
+      const { generateUniqueId } = require('../utils/generateId');
+      const User = require('../models/User');
+      
+      const branch = await Branch.findById(form.branchId?._id || form.branchId).select('branchCode');
+      const user = await User.findById(req.user._id).select('employeeId');
+      
+      const branchCode = branch?.branchCode?.replace(/-/g, '').substring(0, 3) || 'HQ';
+      const empCode = user?.employeeId?.replace(/-/g, '').substring(0, 3) || 'S00';
+      
+      const receipt = await Receipt.create({
+        customerName: form.customer?.name || '',
+        customerEmail: form.customer?.email || null,
+        customerPhone: form.customer?.phone || '',
+        customerAddress: form.customer?.address || null,
+        customerGstNo: form.customer?.gstNo || null,
+        serviceType: form.serviceType || 'AMC',
+        category: form.serviceCategory || 'Residential',
+        premisesType: form.premises?.type || 'Bunglow',
+        paymentMode: form.billing?.paymentMode || 'Cash',
+        transactionId: form.billing?.transactionNo || null,
+        floors: form.premises?.floors || [],
+        totalArea: form.premises?.totalArea || 0,
+        formId: form._id,
+        amcRatePerSqft: form.contract?.ratePerSqft || 0,
+        amcAmount: 0,
+        serviceTotal: form.pricing?.baseAmount || 0,
+        baseAmount: form.pricing?.baseAmount || 0,
+        gstPercent: form.pricing?.gstPercent || 18,
+        gstAmount: form.pricing?.gstAmount || 0,
+        discountPercent: form.pricing?.discountPercent || 0,
+        discountAmount: form.pricing?.discountAmount || 0,
+        totalAmount: form.pricing?.finalAmount || 0,
+        advancePaid: advanceAmount,
+        balanceDue: (form.pricing?.finalAmount || 0) - advanceAmount,
+        employeeId: req.user._id,
         branchId: form.branchId?._id || form.branchId,
-        scheduledDate: form.schedule?.date || new Date(),
-        notes: 'Auto-assigned from form submission',
-        status: 'ASSIGNED',
-        assignedAt: new Date()
+        receiptNo: generateUniqueId('RCP', branchCode, empCode),
+        approvalStatus: 'APPROVED',
+        approvedBy: req.user._id,
+        approvedAt: new Date(),
+        paymentDate: new Date()
       });
-      autoAssigned = true;
+      receiptCreated = receipt;
+
+      // Record in HQ Account
+      await HQAccount.create({
+        type: 'INCOME',
+        source: 'CUSTOMER_RECEIPT',
+        amount: advanceAmount,
+        balanceAfter: 0,
+        relatedId: receipt._id,
+        relatedModel: 'Receipt',
+        branchId: form.branchId?._id || form.branchId,
+        customerId: form.customerId,
+        description: `Booking Advance - ${form.customer?.name} (${form.billing?.paymentMode})`,
+        paymentMode: form.billing?.paymentMode || 'Cash',
+        transactionRef: form.billing?.transactionNo,
+        performedBy: req.user._id,
+        date: new Date()
+      });
+
+      // Record in Employee Ledger
+      const empBalance = await EmployeeLedger.getUserBalance(req.user._id);
+      await EmployeeLedger.create({
+        userId: req.user._id,
+        branchId: form.branchId?._id || form.branchId,
+        type: 'CREDIT',
+        category: 'CUSTOMER_RECEIPT',
+        amount: advanceAmount,
+        balanceAfter: empBalance.balance + advanceAmount,
+        relatedId: receipt._id,
+        relatedModel: 'Receipt',
+        description: `Booking Advance - ${form.customer?.name}`,
+        paymentMode: form.billing?.paymentMode || 'Cash',
+        transactionRef: form.billing?.transactionNo,
+        performedBy: req.user._id,
+        date: new Date()
+      });
+
+      // Record in Branch Ledger
+      const branchBalance = await BranchLedger.getBranchBalance(form.branchId?._id || form.branchId);
+      await BranchLedger.create({
+        branchId: form.branchId?._id || form.branchId,
+        type: 'CREDIT',
+        category: 'CUSTOMER_RECEIPT',
+        amount: advanceAmount,
+        balanceAfter: branchBalance.balance + advanceAmount,
+        relatedId: receipt._id,
+        relatedModel: 'Receipt',
+        employeeId: req.user._id,
+        customerId: form.customerId,
+        description: `Booking Advance - ${form.customer?.name} by ${req.user.name}`,
+        paymentMode: form.billing?.paymentMode || 'Cash',
+        transactionRef: form.billing?.transactionNo,
+        performedBy: req.user._id,
+        date: new Date()
+      });
+    } catch (receiptError) {
+      console.error('Error creating auto-receipt:', receiptError.message);
     }
   }
   
@@ -218,14 +306,43 @@ exports.submitForm = catchAsync(async (req, res, next) => {
     }
   }
 
-  // Invalidate dashboard cache
+  // Invalidate dashboard and task-assignment caches
   await cache.invalidateStats();
+  await cache.del('dashboard');
+  await cache.delPattern('dashboard:*');
+  await cache.delPattern('cache:task-assignments:*');
+
+  // Notify Admins about new form submission
+  try {
+    const User = require('../models/User');
+    const { createNotification } = require('./notificationController');
+    
+    const adminQuery = { role: { $in: ['super_admin', 'branch_admin'] }, isActive: true };
+    if (form.branchId) {
+      adminQuery.branchId = form.branchId;
+    }
+    const admins = await User.find(adminQuery).select('_id');
+    
+    for (const admin of admins) {
+      await createNotification({
+        userId: admin._id,
+        type: 'NEW_BOOKING',
+        title: 'New Booking Submitted',
+        message: `New ${form.serviceType} booking from ${form.customer?.name || 'Customer'}. Amount: ₹${(form.pricing?.finalAmount || 0).toLocaleString()}. Please assign a technician.`,
+        relatedId: form._id,
+        relatedType: 'FORM',
+        data: { formId: form._id, status: 'SUBMITTED' }
+      });
+    }
+  } catch (notifError) {
+    console.warn('Notification error:', notifError.message);
+  }
 
   res.status(200).json({
     success: true,
-    message: autoAssigned ? 'Form submitted and task assigned to you!' : 'Form submitted successfully',
+    message: 'Form submitted successfully. Admin will assign a technician.',
     data: form,
-    autoAssigned,
+    receiptCreated,
   });
 });
 
@@ -264,6 +381,10 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
   // Allow SCHEDULED from SUBMITTED
   else if (status === 'SCHEDULED' && oldStatus === 'SUBMITTED') {
     // Allowed
+  }
+  // Allow COMPLETED from COMPLETED (branch admin re-verification after technician completes)
+  else if (status === 'COMPLETED' && oldStatus === 'COMPLETED') {
+    // Allowed - branch admin can re-verify
   }
   // Prevent going backwards
   else if (statusOrder[oldStatus] >= statusOrder[status] && status !== 'CANCELLED') {
@@ -335,6 +456,124 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
         const amc = await AMC.create(amcData);
       } catch (amcError) {
       }
+    }
+  }
+
+  // Auto-create TaskAssignment when form is SUBMITTED (technician submits booking)
+  // This makes it appear in Task Assignment page immediately
+  if (oldStatus === 'DRAFT' && status === 'SUBMITTED') {
+    try {
+      const TaskAssignment = require('../models/TaskAssignment');
+      // Check if TaskAssignment already exists for this form
+      const existingTasks = await TaskAssignment.find({ serviceFormId: form._id });
+      
+      // Only create if no TaskAssignment exists
+      if (existingTasks.length === 0) {
+        await TaskAssignment.create({
+          serviceFormId: form._id,
+          assignedTo: null,
+          assignedBy: form.employeeId,
+          branchId: form.branchId,
+          scheduledDate: form.schedule?.date || new Date(),
+          notes: 'Auto-created when booking form was submitted - awaiting assignment',
+          status: 'PENDING'
+        });
+        console.log(`Auto-created TaskAssignment for submitted form ${form.orderNo}`);
+      } else {
+        console.log(`TaskAssignment already exists for form ${form.orderNo} (${existingTasks.length} found)`);
+      }
+    } catch (taskError) {
+      console.error('Error auto-creating TaskAssignment:', taskError.message);
+    }
+  }
+
+  // Auto-create TaskAssignment when form is scheduled
+  if (status === 'SCHEDULED' && oldStatus !== 'SCHEDULED') {
+    try {
+      const TaskAssignment = require('../models/TaskAssignment');
+      // Check for any TaskAssignment with this form (including null assignedTo)
+      const existingTasks = await TaskAssignment.find({ serviceFormId: form._id });
+      console.log(`Form ${form.orderNo} has ${existingTasks.length} existing TaskAssignments`);
+      
+      // Don't create duplicate - only create if none exist
+      if (existingTasks.length === 0) {
+        await TaskAssignment.create({
+          serviceFormId: form._id,
+          assignedTo: null,
+          assignedBy: form.employeeId,
+          branchId: form.branchId,
+          scheduledDate: form.schedule?.date || new Date(),
+          notes: 'Auto-created when booking was scheduled - awaiting assignment',
+          status: 'PENDING'
+        });
+        console.log(`Auto-created TaskAssignment for scheduled form ${form.orderNo}`);
+      } else {
+        // Update scheduled date on existing tasks
+        for (const task of existingTasks) {
+          if (!task.assignedTo) { // Only update unassigned tasks
+            task.scheduledDate = form.schedule?.date || new Date();
+            await task.save();
+          }
+        }
+      }
+    } catch (taskError) {
+      console.error('Error auto-creating TaskAssignment on schedule:', taskError.message);
+    }
+    
+    // Auto-generate Receipt for scheduled booking
+    try {
+      const Receipt = require('../models/Receipt');
+      const Branch = require('../models/Branch');
+      const User = require('../models/User');
+      const { generateUniqueId } = require('../utils/generateId');
+      
+      // Check if receipt already exists
+      const existingReceipt = await Receipt.findOne({ formId: form._id });
+      
+      if (!existingReceipt) {
+        const branchData = await Branch.findById(form.branchId).select('branchCode');
+        const userData = await User.findById(form.employeeId || form.createdBy).select('employeeId');
+        
+        const branchCode = branchData?.branchCode?.replace(/-/g, '').substring(0, 3) || 'HQ';
+        const empCode = userData?.employeeId?.replace(/-/g, '').substring(0, 3) || 'S00';
+        const receiptNo = generateUniqueId('RCP', branchCode, empCode);
+        
+        const totalAmount = form.pricing?.finalAmount || form.billing?.total || 0;
+        const advancePaid = form.billing?.advancePaid || form.pricing?.advancePaid || 0;
+        const balanceDue = Math.ceil(totalAmount - advancePaid);
+        
+        await Receipt.create({
+          receiptNo: receiptNo,
+          formId: form._id,
+          customerId: form.customerId?._id || form.customerId,
+          customerName: form.customer?.name || '',
+          customerEmail: form.customer?.email || '',
+          customerPhone: form.customer?.phone || '',
+          customerAddress: form.customer?.address || '',
+          customerGstNo: form.customer?.gstNo || '',
+          branchId: form.branchId,
+          employeeId: form.employeeId || form.createdBy,
+          serviceDescription: `${form.serviceType || 'AMC'} Service`,
+          serviceType: form.serviceType,
+          category: form.category,
+          premisesType: form.premisesType || 'Bunglow',
+          serviceTotal: form.pricing?.baseAmount || totalAmount,
+          baseAmount: form.pricing?.baseAmount || totalAmount,
+          gstPercent: form.pricing?.gstPercent || 18,
+          gstAmount: form.pricing?.gstAmount || 0,
+          discountAmount: form.pricing?.discountAmount || 0,
+          totalAmount: totalAmount,
+          advancePaid: advancePaid,
+          balanceDue: balanceDue,
+          paymentMode: advancePaid > 0 ? 'PENDING' : 'PENDING', // Mark as pending if no payment yet
+          status: 'PENDING',
+          notes: 'Auto-generated receipt when booking was scheduled',
+        });
+        
+        console.log(`Auto-generated Receipt for scheduled form ${form.orderNo}`);
+      }
+    } catch (receiptError) {
+      console.error('Error auto-generating Receipt:', receiptError.message);
     }
   }
 

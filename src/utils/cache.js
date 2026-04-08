@@ -63,6 +63,16 @@ exports.cached = async (key, fn, ttl = DEFAULT_TTL) => {
 exports.invalidateStats = async () => {
   await exports.delPattern('cache:stats:*');
   await exports.delPattern('cache:dashboard:*');
+  await exports.delPattern('dashboard:*');
+  await exports.delPattern('cache:collections:*');
+  await exports.delPattern('cache:receipts:*');
+};
+
+exports.invalidateCache = async (key) => {
+  await exports.del(key);
+  await exports.del(`cache:${key}`);
+  await exports.delPattern(`cache:${key}:*`);
+  await exports.delPattern(`${key}:*`);
 };
 
 console.log('✅ In-memory cache initialized');

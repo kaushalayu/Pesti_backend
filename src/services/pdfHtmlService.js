@@ -4,8 +4,28 @@ const path = require('path');
 
 const LOGO_PATH = path.join(__dirname, '../../../pest/public/logo.jpg');
 
-const getLogoBase64 = () => {
+const getCompanySettings = async () => {
   try {
+    const CompanySettings = require('../models/CompanySettings');
+    let settings = await CompanySettings.findOne();
+    if (!settings) {
+      settings = await CompanySettings.create({});
+    }
+    return settings;
+  } catch (e) {
+    return null;
+  }
+};
+
+const getLogoBase64 = async () => {
+  try {
+    const settings = await getCompanySettings();
+    if (settings?.logo && settings.logo.startsWith('data:')) {
+      return settings.logo;
+    }
+    if (settings?.logo && settings.logo.startsWith('http')) {
+      return settings.logo;
+    }
     if (fs.existsSync(LOGO_PATH)) {
       const imgBuffer = fs.readFileSync(LOGO_PATH);
       return `data:image/jpeg;base64,${imgBuffer.toString('base64')}`;
@@ -14,6 +34,38 @@ const getLogoBase64 = () => {
     // Silently fail
   }
   return null;
+};
+
+const getCompanyInfo = async () => {
+  try {
+    const settings = await getCompanySettings();
+    if (settings) {
+      return {
+        name: settings.companyName || 'SAFE HOME PESTOCHEM INDIA PVT. LTD.',
+        email: settings.email || 'enquiry@safehomepestochem.in',
+        phone: settings.phone || '25709',
+        website: settings.website || 'www.safehomepestochem.com',
+        headOffice: settings.headOffice?.address || '',
+        regionalOffice: settings.regionalOffice?.address || '',
+        cin: settings.cinNo || '',
+        tan: settings.tanNo || '',
+        pan: settings.panNo || '',
+        gst: settings.gstNo || ''
+      };
+    }
+  } catch (e) {}
+  return {
+    name: 'SAFE HOME PESTOCHEM INDIA PVT. LTD.',
+    email: 'enquiry@safehomepestochem.in',
+    phone: '25709',
+    website: 'www.safehomepestochem.com',
+    headOffice: 'House No. 780-J, Chaksa Husain, Pachpedwa, Ramjanki Nagar, Basaratpur, Gorakhpur-273004',
+    regionalOffice: 'H. No-68, Pink City, Sec. 06, Jankipuram Extn., Near Kendria Vihar Colony, Lucknow-226021',
+    cin: 'U52100UP2022PTC164278',
+    tan: 'ALDS10486A',
+    pan: 'ABICS5318P',
+    gst: ''
+  };
 };
 
 const formatCurrency = (num) => {
@@ -35,8 +87,9 @@ const formatDate = (date) => {
 // ==========================================
 // PROFESSIONAL JOB CARD TEMPLATE - ENHANCED
 // ==========================================
-const generateJobCardHtml = (data) => {
-  const logo = getLogoBase64();
+const generateJobCardHtml = async (data) => {
+  const logo = await getLogoBase64();
+  const companyInfo = await getCompanyInfo();
   const cust = data.customer || {};
   const premises = data.premises || {};
   const pricing = data.pricing || {};
@@ -489,9 +542,12 @@ const generateJobCardHtml = (data) => {
       <div class="header-main">
         ${logo ? `<img src="${logo}" class="logo" />` : `<div class="logo-placeholder">SH</div>`}
         <div class="company-details">
-          <div class="company-name">Safe Home Pestochem India Pvt. Ltd.</div>
+          <div class="company-name">${companyInfo.name}</div>
           <div class="company-tagline">Professional Pest Control Services | ISO 9001:2015 Certified</div>
-          <div class="company-address">Shop No. 123, Hazratganj, Lucknow, UP 226001 | Ph: 9876543210</div>
+          <div class="company-address">Head Office: ${companyInfo.headOffice}</div>
+          <div class="company-address">Regional Office: ${companyInfo.regionalOffice}</div>
+          <div class="company-address">${companyInfo.website} | ${companyInfo.email} | Ph: ${companyInfo.phone}</div>
+          <div class="company-address">CIN: ${companyInfo.cin} | TAN: ${companyInfo.tan} | PAN: ${companyInfo.pan}</div>
         </div>
         <div class="header-right">
           <div class="doc-type">Job Card</div>
@@ -660,8 +716,8 @@ const generateJobCardHtml = (data) => {
     </div>
     ` : ''}
     
-    <!-- FLOOR DETAILS -->
-    <div class="table-section">
+    <!-- FLOOR DETAILS - NEW PAGE -->
+    <div style="page-break-before: always;" class="table-section">
       <div class="section-title">Floor Area Details</div>
       <table class="table">
         <thead>
@@ -841,22 +897,57 @@ const generateJobCardHtml = (data) => {
       </div>
     </div>
     
-    <!-- TERMS -->
-    <div class="terms-box">
-      <div class="terms-title">Terms & Conditions</div>
-      <ul class="terms-list">
-        <li>Service will be performed by our trained technicians using approved chemicals</li>
-        <li>Customer should provide access to the premises at scheduled time</li>
-        <li>Any additional services beyond AMC scope will be charged extra</li>
-        <li>Payment should be made as per the agreed terms</li>
-        <li>For complaints or queries, contact our customer care</li>
-      </ul>
-    </div>
-    
     <!-- FOOTER -->
     <div class="footer">
       <div class="footer-text">
         Safe Home Pestochem India Pvt. Ltd. | ISO 9001:2015 Certified | www.safehomepest.com
+      </div>
+    </div>
+    
+    <!-- TERMS AND CONDITIONS - NEW PAGE -->
+    <div style="page-break-before: always; padding: 40px 30px;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h2 style="font-size: 18px; font-weight: 800; color: #1a365d; text-transform: uppercase; letter-spacing: 2px;">Terms & Conditions - ${data.serviceType || 'Service'}</h2>
+        <div style="width: 100px; height: 3px; background: #38a169; margin: 10px auto;"></div>
+      </div>
+      
+      <div style="font-size: 10px; line-height: 1.8; color: #4a5568;">
+        ${data.serviceType === 'AMC' || data.serviceType === 'GPC' || data.serviceType === 'BOTH' ? `
+        <h3 style="font-size: 12px; font-weight: 700; color: #1a365d; margin-bottom: 10px;">AMC/GPC Terms & Conditions</h3>
+        <ol style="padding-left: 20px; margin-bottom: 20px;">
+          <li style="margin-bottom: 8px;"><strong>Service Coverage:</strong> The AMC/GPC services cover the pest control treatments specified in the service agreement for the contracted area only.</li>
+          <li style="margin-bottom: 8px;"><strong>Warranty Period:</strong> Warranty is valid for the period specified in the contract from the date of first service. Does not cover new infestations or damage from natural disasters.</li>
+          <li style="margin-bottom: 8px;"><strong>Service Scheduling:</strong> Services will be conducted as per the scheduled plan. If customer reschedules more than 2 times, a recall charge of ₹500 will apply.</li>
+          <li style="margin-bottom: 8px;"><strong>Payment Terms:</strong> All payments should be made within the stipulated time. Outstanding payments may result in service suspension.</li>
+          <li style="margin-bottom: 8px;"><strong>Post-Treatment Care:</strong> Customer should follow post-treatment instructions provided by technician for effective results.</li>
+        </ol>
+        ` : ''}
+        
+        ${data.serviceType === 'ATT' || data.serviceType === 'BOTH' ? `
+        <h3 style="font-size: 12px; font-weight: 700; color: #1a365d; margin-bottom: 10px;">ATT (Anti Termite) Terms & Conditions</h3>
+        <ol style="padding-left: 20px; margin-bottom: 20px;">
+          <li style="margin-bottom: 8px;"><strong>Treatment Coverage:</strong> ATT treatment is limited to the areas specified in the job card. Any additional areas will be charged separately.</li>
+          <li style="margin-bottom: 8px;"><strong>Warranty Period:</strong> ATT warranty is valid for the period specified (${data.attDetails?.warranty || 'as agreed'}). Warranty does not cover re-infestation due to structural issues or external factors.</li>
+          <li style="margin-bottom: 8px;"><strong>Structural Changes:</strong> Any structural changes, renovation, or waterproofing work after treatment will void the warranty.</li>
+          <li style="margin-bottom: 8px;"><strong>Post-Treatment:</strong> Customer should avoid disturbing the treated area for 7 days after treatment. Waterproofing should be done only after technician approval.</li>
+          <li style="margin-bottom: 8px;"><strong>Liability:</strong> Our liability is limited to the treatment cost. We are not responsible for any structural damage or pest-related property damage.</li>
+        </ol>
+        ` : ''}
+        
+        ${data.serviceType !== 'AMC' && data.serviceType !== 'ATT' && data.serviceType !== 'GPC' && data.serviceType !== 'BOTH' ? `
+        <ol style="padding-left: 20px;">
+          <li style="margin-bottom: 8px;"><strong>Service Coverage:</strong> Services are limited to the treatment areas specified in the job card.</li>
+          <li style="margin-bottom: 8px;"><strong>Payment Terms:</strong> All payments should be made as per agreed terms.</li>
+          <li style="margin-bottom: 8px;"><strong>Customer Responsibility:</strong> Customer should provide access to all areas requiring treatment.</li>
+          <li style="margin-bottom: 8px;"><strong>Post-Treatment Care:</strong> Follow all post-treatment instructions for effective results.</li>
+          <li style="margin-bottom: 8px;"><strong>Dispute Resolution:</strong> Any disputes shall be subject to jurisdiction of courts in the branch city.</li>
+        </ol>
+        ` : ''}
+      </div>
+      
+      <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 10px; color: #718096;">
+        <div>Generated on: ${new Date().toLocaleString('en-IN')}</div>
+        <div>Safe Home Pestochem India Pvt. Ltd.</div>
       </div>
     </div>
     
@@ -877,7 +968,7 @@ exports.generateJobCardPdf = async (formData) => {
   
   try {
     const page = await browser.newPage();
-    const html = generateJobCardHtml(formData);
+    const html = await generateJobCardHtml(formData);
     await page.setContent(html, { waitUntil: 'networkidle0' });
     
     const pdf = await page.pdf({
@@ -895,9 +986,9 @@ exports.generateJobCardPdf = async (formData) => {
 // ==========================================
 // RECEIPT HTML TEMPLATE (MATCHING JOB CARD STYLE)
 // ==========================================
-const generateReceiptHtml = (data) => {
-  const logo = getLogoBase64();
-  const amc = data.amcId || {};
+const generateReceiptHtml = async (data) => {
+  const logo = await getLogoBase64();
+  const companyInfo = await getCompanyInfo();
   const cust = {
     name: data.customerName || data.customer?.name || '-',
     phone: data.customerPhone || data.customer?.phone || '-',
@@ -1232,9 +1323,12 @@ const generateReceiptHtml = (data) => {
       <div class="header-main">
         ${logo ? `<img src="${logo}" class="logo" />` : `<div class="logo-placeholder">SH</div>`}
         <div class="company-details">
-          <div class="company-name">Safe Home Pestochem India Pvt. Ltd.</div>
+          <div class="company-name">${companyInfo.name}</div>
           <div class="company-tagline">Professional Pest Control Services | ISO 9001:2015 Certified</div>
-          <div class="company-address">Shop No. 123, Hazratganj, Lucknow, UP 226001 | Ph: 9876543210</div>
+          <div class="company-address">Head Office: ${companyInfo.headOffice}</div>
+          <div class="company-address">Regional Office: ${companyInfo.regionalOffice}</div>
+          <div class="company-address">${companyInfo.website} | ${companyInfo.email} | Ph: ${companyInfo.phone}</div>
+          <div class="company-address">CIN: ${companyInfo.cin} | TAN: ${companyInfo.tan} | PAN: ${companyInfo.pan}</div>
         </div>
         <div class="header-right">
           <div class="doc-type">Receipt</div>
@@ -1379,6 +1473,34 @@ const generateReceiptHtml = (data) => {
       </div>
     </div>
     
+    <!-- TERMS AND CONDITIONS - NEW PAGE -->
+    <div style="page-break-before: always; padding: 40px 30px;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h2 style="font-size: 18px; font-weight: 800; color: #1a365d; text-transform: uppercase; letter-spacing: 2px;">Terms & Conditions</h2>
+        <div style="width: 100px; height: 3px; background: #38a169; margin: 10px auto;"></div>
+      </div>
+      
+      <div style="font-size: 10px; line-height: 1.8; color: #4a5568;">
+        <ol style="padding-left: 20px;">
+          <li style="margin-bottom: 10px;"><strong>Service Coverage:</strong> The services mentioned in this receipt are limited to the treatment areas specified in the job card. Any additional areas treated will be charged separately.</li>
+          <li style="margin-bottom: 10px;"><strong>Warranty Period:</strong> The warranty is valid for the period specified in the contract from the date of first service, subject to terms and conditions. Warranty does not cover new infestations or damage caused by natural disasters.</li>
+          <li style="margin-bottom: 10px;"><strong>Service Scheduling:</strong> AMC services will be conducted as per the scheduled plan. If the customer reschedules more than 2 times, a recall charge of ₹500 will apply.</li>
+          <li style="margin-bottom: 10px;"><strong>Payment Terms:</strong> All payments should be made within the stipulated time. Outstanding payments may result in suspension of services until cleared.</li>
+          <li style="margin-bottom: 10px;"><strong>Liability:</strong> Safe Home Pestochem India Pvt. Ltd. shall not be liable for any indirect, incidental, or consequential damages. Our liability is limited to the service fee paid.</li>
+          <li style="margin-bottom: 10px;"><strong>Cancellation Policy:</strong> Once the service is booked, cancellation should be done 24 hours before the scheduled time. Late cancellations may attract a fee.</li>
+          <li style="margin-bottom: 10px;"><strong>Customer Responsibility:</strong> The customer should provide access to all areas requiring treatment and disclose any known hazards or special conditions.</li>
+          <li style="margin-bottom: 10px;"><strong>Post-Treatment Care:</strong> Customer should follow the post-treatment instructions provided by our technician for effective results. Failure to do so may affect the warranty.</li>
+          <li style="margin-bottom: 10px;"><strong>Dispute Resolution:</strong> Any disputes shall be subject to the jurisdiction of the courts in the city where the branch is located.</li>
+          <li style="margin-bottom: 10px;"><strong>Agreement Acceptance:</strong> By accepting this receipt, the customer agrees to all terms and conditions mentioned herein and in the service agreement.</li>
+        </ol>
+      </div>
+      
+      <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 10px; color: #718096;">
+        <div>Generated on: ${new Date().toLocaleString('en-IN')}</div>
+        <div>Safe Home Pestochem India Pvt. Ltd.</div>
+      </div>
+    </div>
+    
   </div>
 </body>
 </html>
@@ -1396,7 +1518,7 @@ exports.generateReceiptPdf = async (data) => {
   
   try {
     const page = await browser.newPage();
-    const html = generateReceiptHtml(data);
+    const html = await generateReceiptHtml(data);
     await page.setContent(html, { waitUntil: 'networkidle0' });
     
     const pdf = await page.pdf({

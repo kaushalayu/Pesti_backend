@@ -61,7 +61,7 @@ const receiptSchema = new mongoose.Schema(
     
     paymentMode: { 
       type: String, 
-      enum: ['CASH', 'CHEQUE', 'NEFT', 'ONLINE', 'UPI', 'WALLET'],
+      enum: ['CASH', 'CHEQUE', 'NEFT', 'ONLINE', 'UPI', 'WALLET', 'PENDING', 'Cash', 'cash'],
       required: true 
     },
     paymentDate: { type: Date, default: Date.now },
@@ -70,12 +70,21 @@ const receiptSchema = new mongoose.Schema(
     
     approvalStatus: { 
       type: String, 
-      enum: ['PENDING', 'APPROVED', 'REJECTED'], 
+      enum: ['PENDING', 'BRANCH_APPROVED', 'APPROVED', 'REJECTED'], 
       default: 'PENDING' 
     },
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     approvedAt: { type: Date },
     rejectionReason: { type: String },
+    
+    branchApprovalStatus: { 
+      type: String, 
+      enum: ['PENDING', 'APPROVED', 'REJECTED'], 
+      default: 'PENDING' 
+    },
+    branchApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    branchApprovedAt: { type: Date },
+    branchRejectionReason: { type: String },
     
     status: { 
       type: String, 

@@ -9,7 +9,8 @@ const taskAssignmentSchema = new mongoose.Schema({
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false,
+    default: null
   },
   assignedBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -44,5 +45,9 @@ const taskAssignmentSchema = new mongoose.Schema({
 taskAssignmentSchema.index({ assignedTo: 1, scheduledDate: 1 });
 taskAssignmentSchema.index({ branchId: 1, scheduledDate: 1 });
 taskAssignmentSchema.index({ status: 1 });
+taskAssignmentSchema.index({ serviceFormId: 1 });
+taskAssignmentSchema.index({ scheduledDate: 1 });
+taskAssignmentSchema.index({ assignedTo: 1, status: 1 });
+taskAssignmentSchema.index({ branchId: 1, status: 1 });
 
 module.exports = mongoose.model('TaskAssignment', taskAssignmentSchema);

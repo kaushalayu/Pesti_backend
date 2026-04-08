@@ -150,7 +150,7 @@ exports.updateEmployee = catchAsync(async (req, res, next) => {
   delete req.body.passwordHash;
 
   const updatedEmployee = await User.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
+    returnDocument: 'after',
     runValidators: true,
   });
 

@@ -9,12 +9,35 @@ const floorSchema = new mongoose.Schema({
 }, { _id: true });
 
 const attDetailsSchema = new mongoose.Schema({
+  prePost: { type: String, enum: ['PRE', 'POST'], default: 'PRE' },
   treatmentTypes: [{ type: String }],
   chemicals: [{ type: String }],
   methods: [{ type: String }],
   baseSolutions: [{ type: String }],
   constructionPhase: { type: String },
-  warranty: { type: String }
+  warranty: { type: String },
+  // Pre-treatment checklist
+  preChecklist: [{
+    item: { type: String },
+    completed: { type: Boolean, default: false },
+    remarks: { type: String }
+  }],
+  // Post-treatment checklist
+  postChecklist: [{
+    item: { type: String },
+    completed: { type: Boolean, default: false },
+    remarks: { type: String }
+  }],
+  // Pre-treatment values
+  preTreatmentType: { type: String },
+  preChemical: { type: String },
+  preApplicationMethod: { type: String },
+  preBaseSolution: { type: String },
+  // Post-treatment values
+  postTreatmentType: { type: String },
+  postChemical: { type: String },
+  postApplicationMethod: { type: String },
+  postBaseSolution: { type: String }
 }, { _id: false });
 
 const serviceFormSchema = new mongoose.Schema(
@@ -184,6 +207,7 @@ serviceFormSchema.index({ 'billing.advance': 1 });
 serviceFormSchema.index({ status: 1, branchId: 1, createdAt: -1 });
 serviceFormSchema.index({ status: 1, employeeId: 1, createdAt: -1 });
 serviceFormSchema.index({ billing: 1, createdAt: -1 });
+serviceFormSchema.index({ 'schedule.date': 1 });
 
 serviceFormSchema.pre('validate', async function () {
   if (this.isNew && !this.orderNo && this.branchId && this.employeeId) {

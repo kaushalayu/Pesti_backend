@@ -9,7 +9,7 @@ const catchAsync = require('../utils/catchAsync');
 // @route   POST /api/employee-distributions
 // @access  Branch Admin, Office
 exports.createDistribution = catchAsync(async (req, res, next) => {
-  const { employeeId, items, notes } = req.body;
+  const { employeeId, items, notes, fromUserId } = req.body;
   
   if (!employeeId) {
     return next(new AppError('Employee is required', 400));
@@ -26,24 +26,50 @@ exports.createDistribution = catchAsync(async (req, res, next) => {
     return next(new AppError('Employee not found in your branch', 404));
   }
   
+  // Check if this is a peer-to-peer request (employee to employee)
+  const isPeerToPeer = fromUserId && (req.user.role === 'employee' || req.user.role === 'technician' || req.user.role === 'sales');
+  
   let totalQty = 0;
   let totalValue = 0;
   const enrichedItems = [];
   
   for (const item of items) {
-    // Get from branch inventory
-    const branchInv = await Inventory.findOne({
-      chemicalId: item.chemicalId,
-      ownerId: branchId,
-      ownerType: 'Branch'
-    });
+    let sourceInv;
     
-    if (!branchInv || branchInv.quantity < item.quantity) {
-      return next(new AppError(`Insufficient stock for ${item.chemicalId}`, 400));
+    if (isPeerToPeer) {
+      // Deduct from sender's inventory
+      sourceInv = await Inventory.findOne({
+        chemicalId: item.chemicalId,
+        ownerId: fromUserId,
+        ownerType: 'Employee'
+      });
+      
+      if (!sourceInv || sourceInv.quantity < item.quantity) {
+        return next(new AppError(`Insufficient stock for ${item.chemicalId}`, 400));
+      }
+      
+      sourceInv.quantity -= item.quantity;
+      sourceInv.totalValue = Math.round(sourceInv.quantity * sourceInv.transferRate * 100) / 100;
+      await sourceInv.save();
+    } else {
+      // Get from branch inventory
+      sourceInv = await Inventory.findOne({
+        chemicalId: item.chemicalId,
+        ownerId: branchId,
+        ownerType: 'Branch'
+      });
+      
+      if (!sourceInv || sourceInv.quantity < item.quantity) {
+        return next(new AppError(`Insufficient stock for ${item.chemicalId}`, 400));
+      }
+      
+      sourceInv.quantity -= item.quantity;
+      sourceInv.totalValue = Math.round(sourceInv.quantity * sourceInv.transferRate * 100) / 100;
+      await sourceInv.save();
     }
     
     const quantity = parseFloat(item.quantity) || 0;
-    const rate = branchInv.transferRate || 0;
+    const rate = sourceInv.transferRate || 0;
     const value = Math.round(quantity * rate * 100) / 100;
     
     totalQty += quantity;
@@ -51,54 +77,178 @@ exports.createDistribution = catchAsync(async (req, res, next) => {
     
     enrichedItems.push({
       chemicalId: item.chemicalId,
-      chemicalName: branchInv.chemicalId?.name || item.chemicalName || 'Unknown',
-      category: branchInv.chemicalId?.category || '',
+      chemicalName: sourceInv.chemicalId?.name || item.chemicalName || 'Unknown',
+      category: sourceInv.chemicalId?.category || '',
       quantity: quantity,
-      unit: item.unit || branchInv.unit || 'L',
+      unit: item.unit || sourceInv.unit || 'L',
       rate: rate,
       value: value
     });
-    
-    // Deduct from branch inventory
-    branchInv.quantity -= quantity;
-    branchInv.totalValue = Math.round(branchInv.quantity * branchInv.transferRate * 100) / 100;
-    await branchInv.save();
   }
   
   const distribution = await Distribution.create({
     branchId,
+    fromUserId: isPeerToPeer ? fromUserId : null,
     employeeId,
     items: enrichedItems,
     totalQuantity: totalQty,
     totalValue: totalValue,
     notes: notes || '',
     distributedBy: req.user._id,
-    status: 'DISTRIBUTED'
+    status: isPeerToPeer ? 'PENDING' : (req.body.fromUserId ? 'PENDING' : 'APPROVED'),
+    distributedAt: isPeerToPeer ? null : new Date()
   });
   
   // Create transactions
-  for (const item of enrichedItems) {
+  if (!isPeerToPeer) {
+    for (const item of enrichedItems) {
+      await InventoryTransaction.create({
+        txnType: 'DISTRIBUTE_TO_EMPLOYEE',
+        chemicalId: item.chemicalId,
+        fromId: branchId,
+        fromType: 'Branch',
+        toId: employeeId,
+        toType: 'Employee',
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: item.rate,
+        totalValue: item.value,
+        type: 'DISTRIBUTE',
+        notes: `Distributed to ${employee.name}`,
+        performedBy: req.user._id
+      });
+    }
+  }
+  
+  await distribution.populate('employeeId', 'name employeeId');
+  await distribution.populate('fromUserId', 'name');
+  
+  res.status(201).json({
+    success: true,
+    data: distribution
+  });
+});
+
+// @desc    Approve distribution request (Employee accepts)
+// @route   POST /api/employee-distributions/:id/approve
+// @access  Employee
+exports.approveDistribution = catchAsync(async (req, res, next) => {
+  const distribution = await Distribution.findById(req.params.id);
+  
+  if (!distribution) {
+    return next(new AppError('Distribution not found', 404));
+  }
+  
+  if (distribution.employeeId.toString() !== req.user._id.toString()) {
+    return next(new AppError('Not authorized', 403));
+  }
+  
+  if (distribution.status !== 'PENDING') {
+    return next(new AppError('Distribution is not pending', 400));
+  }
+  
+  const branchId = distribution.branchId;
+  
+  // Deduct from branch inventory
+  for (const item of distribution.items) {
+    const branchInv = await Inventory.findOne({
+      chemicalId: item.chemicalId,
+      ownerId: branchId,
+      ownerType: 'Branch'
+    });
+    
+    if (!branchInv || branchInv.quantity < item.quantity) {
+      return next(new AppError(`Insufficient stock for ${item.chemicalName}`, 400));
+    }
+    
+    branchInv.quantity -= item.quantity;
+    branchInv.totalValue = Math.round(branchInv.quantity * branchInv.transferRate * 100) / 100;
+    await branchInv.save();
+  }
+  
+  // Create inventory for employee
+  for (const item of distribution.items) {
+    let empInv = await Inventory.findOne({
+      chemicalId: item.chemicalId,
+      ownerId: distribution.employeeId,
+      ownerType: 'Employee'
+    });
+    
+    if (empInv) {
+      empInv.quantity += item.quantity;
+      empInv.totalValue = Math.round(empInv.quantity * item.rate * 100) / 100;
+      await empInv.save();
+    } else {
+      const chem = await require('../models/Chemical').findById(item.chemicalId);
+      empInv = await Inventory.create({
+        chemicalId: item.chemicalId,
+        ownerId: distribution.employeeId,
+        ownerType: 'Employee',
+        quantity: item.quantity,
+        unit: item.unit,
+        displayQuantity: item.quantity,
+        displayUnit: item.unit,
+        transferRate: item.rate,
+        totalValue: item.value,
+        unitSystem: chem?.unitSystem || 'L'
+      });
+    }
+  }
+  
+  // Create transactions
+  for (const item of distribution.items) {
     await InventoryTransaction.create({
       txnType: 'DISTRIBUTE_TO_EMPLOYEE',
       chemicalId: item.chemicalId,
       fromId: branchId,
       fromType: 'Branch',
-      toId: employeeId,
+      toId: distribution.employeeId,
       toType: 'Employee',
       quantity: item.quantity,
       unit: item.unit,
       unitPrice: item.rate,
       totalValue: item.value,
       type: 'DISTRIBUTE',
-      notes: `Distributed to ${employee.name}`,
+      notes: `Approved and distributed to ${req.user.name}`,
       performedBy: req.user._id
     });
   }
   
-  await distribution.populate('employeeId', 'name employeeId');
+  distribution.status = 'APPROVED';
+  distribution.distributedAt = new Date();
+  await distribution.save();
   
-  res.status(201).json({
+  res.status(200).json({
     success: true,
+    message: 'Stock accepted and added to your wallet',
+    data: distribution
+  });
+});
+
+// @desc    Reject distribution request
+// @route   POST /api/employee-distributions/:id/reject
+// @access  Employee
+exports.rejectDistribution = catchAsync(async (req, res, next) => {
+  const distribution = await Distribution.findById(req.params.id);
+  
+  if (!distribution) {
+    return next(new AppError('Distribution not found', 404));
+  }
+  
+  if (distribution.employeeId.toString() !== req.user._id.toString()) {
+    return next(new AppError('Not authorized', 403));
+  }
+  
+  if (distribution.status !== 'PENDING') {
+    return next(new AppError('Distribution is not pending', 400));
+  }
+  
+  distribution.status = 'REJECTED';
+  await distribution.save();
+  
+  res.status(200).json({
+    success: true,
+    message: 'Distribution rejected',
     data: distribution
   });
 });

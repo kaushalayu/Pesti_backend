@@ -18,8 +18,15 @@ const notificationSchema = new mongoose.Schema(
         'RECEIPT_REJECTED',
         'FORM_SCHEDULED',
         'FORM_COMPLETED',
+        'FORM_CREATED',
+        'NEW_BOOKING',
         'AMC_EXPIRING',
         'NEW_ASSIGNMENT',
+        'TASK_ASSIGNED',
+        'TASK_ACCEPTED',
+        'TASK_DECLINED',
+        'TASK_COMPLETED',
+        'RECEIPT_PENDING',
         'GENERAL'
       ],
       required: true,
@@ -34,10 +41,11 @@ const notificationSchema = new mongoose.Schema(
     },
     relatedId: {
       type: mongoose.Schema.Types.ObjectId,
+      default: null,
     },
     relatedType: {
       type: String,
-      enum: ['Expense', 'Receipt', 'ServiceForm', 'AMC', 'User', 'General'],
+      enum: ['Expense', 'Receipt', 'ServiceForm', 'AMC', 'User', 'General', 'FORM', 'TASK', 'Booking'],
     },
     isRead: {
       type: Boolean,
@@ -54,11 +62,10 @@ const notificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-notificationSchema.pre('save', async function(next) {
+notificationSchema.pre('save', async function() {
   if (this.isNew && !this.notificationId) {
     this.notificationId = generateUniqueId('NTF', '', '');
   }
-  next();
 });
 
 notificationSchema.index({ userId: 1, createdAt: -1 });

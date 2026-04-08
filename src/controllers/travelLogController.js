@@ -4,7 +4,7 @@ const User = require('../models/User');
 const EmployeeLedger = require('../models/EmployeeLedger');
 const BranchLedger = require('../models/BranchLedger');
 
-const RATE_PER_KM = 10;
+const RATE_PER_KM = 2;
 
 const getTravelLogs = async (req, res, next) => {
   try {
@@ -448,12 +448,12 @@ const getLinkedForms = async (req, res, next) => {
   try {
     const forms = await ServiceForm.find({
       employeeId: req.user._id,
-      status: { $in: ['SCHEDULED', 'COMPLETED'] }
+      status: { $in: ['PENDING', 'SCHEDULED', 'COMPLETED'] }
     })
     .populate('customer', 'name phone address')
-    .select('orderNo customer')
+    .select('orderNo customer status serviceType')
     .sort({ createdAt: -1 })
-    .limit(20);
+    .limit(50);
 
     res.status(200).json({
       success: true,

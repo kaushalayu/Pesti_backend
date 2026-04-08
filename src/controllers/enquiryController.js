@@ -134,7 +134,7 @@ exports.updateEnquiry = catchAsync(async (req, res, next) => {
   }
 
   const updatedEnquiry = await Enquiry.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
+    returnDocument: 'after',
     runValidators: true,
   });
 

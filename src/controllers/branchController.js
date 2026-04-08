@@ -84,7 +84,7 @@ exports.updateBranch = catchAsync(async (req, res, next) => {
   }
 
   const branch = await Branch.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
+returnDocument: 'after',
     runValidators: true,
   });
 
@@ -116,7 +116,7 @@ exports.toggleBranchStatus = catchAsync(async (req, res, next) => {
   const branch = await Branch.findByIdAndUpdate(
     req.params.id,
     { isActive },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
 
   if (!branch) {

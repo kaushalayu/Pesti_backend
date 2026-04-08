@@ -1,28 +1,71 @@
 const fs = require('fs');
 const path = require('path');
-const PDFDocument = require('pdfkit');
+const puppeteer = require('puppeteer');
 
 const LOGO_PATH = path.join(__dirname, '../../pest/public/logo.jpg');
-const getLogo = () => {
+
+const getCompanySettings = async () => {
   try {
+    const CompanySettings = require('../models/CompanySettings');
+    let settings = await CompanySettings.findOne();
+    if (!settings) {
+      settings = await CompanySettings.create({});
+    }
+    return settings;
+  } catch (e) {
+    return null;
+  }
+};
+
+const getLogoBase64 = async () => {
+  try {
+    const settings = await getCompanySettings();
+    if (settings?.logo) {
+      return settings.logo;
+    }
     if (fs.existsSync(LOGO_PATH)) {
-      return fs.readFileSync(LOGO_PATH);
+      const buffer = fs.readFileSync(LOGO_PATH);
+      return `data:image/jpeg;base64,${buffer.toString('base64')}`;
     }
   } catch (e) {}
   return null;
 };
 
-const BRAND_COLOR = '#059669';
-const BRAND_LIGHT = '#d1fae5';
-const ATT_COLOR = '#2563eb';
-const ATT_LIGHT = '#dbeafe';
-const DARK = '#1e293b';
-const GRAY = '#64748b';
-const LIGHT_GRAY = '#f1f5f9';
+const getCompanyInfo = async () => {
+  try {
+    const settings = await getCompanySettings();
+    if (settings) {
+      return {
+        name: settings.companyName || 'SAFE HOME PESTOCHEM INDIA PVT. LTD.',
+        email: settings.email || 'enquiry@safehomepestochem.in',
+        phone: settings.phone || '25709',
+        website: settings.website || 'www.safehomepestochem.com',
+        headOffice: settings.headOffice?.address || '',
+        regionalOffice: settings.regionalOffice?.address || '',
+        cin: settings.cinNo || '',
+        tan: settings.tanNo || '',
+        pan: settings.panNo || '',
+        gst: settings.gstNo || ''
+      };
+    }
+  } catch (e) {}
+  return {
+    name: 'SAFE HOME PESTOCHEM INDIA PVT. LTD.',
+    email: 'enquiry@safehomepestochem.in',
+    phone: '25709',
+    website: 'www.safehomepestochem.com',
+    headOffice: 'House No. 780-J, Chaksa Husain, Pachpedwa, Ramjanki Nagar, Basaratpur, Gorakhpur-273004',
+    regionalOffice: 'H. No-68, Pink City, Sec. 06, Jankipuram Extn., Near Kendria Vihar Colony, Lucknow-226021',
+    cin: 'U52100UP2022PTC164278',
+    tan: 'ALDS10486A',
+    pan: 'ABICS5318P',
+    gst: ''
+  };
+};
 
 const formatCurrency = (num) => {
-  if (!num && num !== 0) return 'Rs. 0.00';
-  return 'Rs. ' + Number(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!num && num !== 0) return 'Rs. 0';
+  return 'Rs. ' + Number(num).toLocaleString('en-IN');
 };
 
 const formatNum = (num) => {
@@ -35,553 +78,339 @@ const formatDate = (date) => {
   return new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const PAGE_W = 595;
-const PAGE_H = 842;
-const MARGIN = 50;
-const CONTENT_W = PAGE_W - (MARGIN * 2);
-
-const checkPage = (doc, y, need = 120) => {
-  if (y > PAGE_H - need) {
-    doc.addPage();
-    return MARGIN + 10;
-  }
-  return y;
-};
-
-const drawLogoHeader = (doc) => {
-  const logo = getLogo();
-  let y = MARGIN;
+const getJobCardHTML = async (data) => {
+  const logo = await getLogoBase64();
+  const companyInfo = await getCompanyInfo();
+  const cust = data.customer || {};
+  const pricing = data.pricing || {};
+  const schedule = data.schedule || {};
+  const premises = data.premises || {};
+  const attDetails = data.attDetails || {};
   
-  if (logo) {
-    doc.image(logo, MARGIN, y, { width: 45, height: 45 });
-    doc.fontSize(14).font('Helvetica-Bold').fillColor(DARK)
-      .text('SAFE HOME PESTOCHEM INDIA PVT. LTD.', MARGIN + 55, y + 5, { width: CONTENT_W - 55 });
-    doc.fontSize(7).font('Helvetica').fillColor(GRAY)
-      .text('ISO 9001:2015 Certified Company', MARGIN + 55, y + 22);
-  } else {
-    doc.fontSize(14).font('Helvetica-Bold').fillColor(DARK)
-      .text('SAFE HOME PESTOCHEM INDIA PVT. LTD.', MARGIN, y, { width: CONTENT_W });
-    doc.fontSize(7).font('Helvetica').fillColor(GRAY)
-      .text('ISO 9001:2015 Certified Company', MARGIN, y + 18);
-  }
+  const floors = premises.floors || [];
+  const amcServices = data.amcServices || [];
   
-  return y + 55;
-};
-
-const drawTitle = (doc, y, title, color = BRAND_COLOR) => {
-  y += 5;
-  doc.fontSize(12).font('Helvetica-Bold').fillColor(color)
-    .text(title, MARGIN, y, { width: CONTENT_W, align: 'center' });
-  y += 18;
-  doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).strokeColor(color).lineWidth(1.5).stroke();
-  return y + 12;
-};
-
-const drawSectionHeader = (doc, y, title, color = BRAND_COLOR) => {
-  doc.fontSize(9).font('Helvetica-Bold').fillColor(color).text(title, MARGIN, y);
-  return y + 5;
-};
-
-const drawHR = (doc, y, color = '#e2e8f0') => {
-  doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).strokeColor(color).lineWidth(0.5).stroke();
-  return y;
-};
-
-const drawLabelValue = (doc, y, label, value, x1 = MARGIN, x2 = 150) => {
-  doc.fontSize(8).font('Helvetica').fillColor(GRAY).text(label + ':', x1, y);
-  doc.fontSize(8).font('Helvetica-Bold').fillColor(DARK).text(String(value || '-'), x2, y);
-  return y + 13;
-};
-
-const drawTwoColumns = (doc, y, items) => {
-  const colW = CONTENT_W / 2;
-  items.forEach((item, i) => {
-    const x1 = MARGIN + (i % 2) * colW;
-    const x2 = x1 + 85;
-    doc.fontSize(8).font('Helvetica').fillColor(GRAY).text(item.label + ':', x1, y);
-    doc.fontSize(8).font('Helvetica-Bold').fillColor(DARK).text(String(item.value || '-'), x2, y);
-    if (i % 2 === 1) y += 13;
-  });
-  if (items.length % 2 === 1) y += 13;
-  return y;
-};
-
-const drawBox = (doc, y, items, bgColor = LIGHT_GRAY) => {
-  doc.rect(MARGIN, y, CONTENT_W, items.length * 13 + 16).fillAndStroke(bgColor, '#e2e8f0');
-  let yy = y + 8;
-  items.forEach((item, i) => {
-    const x1 = MARGIN + 10;
-    doc.fontSize(8).font('Helvetica').fillColor(GRAY).text(item.label + ':', x1, yy);
-    doc.fontSize(8).font(item.bold ? 'Helvetica-Bold' : 'Helvetica').fillColor(item.color || DARK).text(String(item.value || '-'), x1 + 85, yy);
-    if ((i + 1) % 2 === 0 || i === items.length - 1) yy += 13;
-  });
-  return y + items.length * 13 + 20;
-};
-
-const drawTable = (doc, y, headers, rows, colWidths) => {
-  const numCols = headers.length;
-  if (!colWidths) {
-    const equalW = CONTENT_W / numCols;
-    colWidths = headers.map(() => equalW);
-  }
+  const totalArea = premises.totalArea || 0;
+  const baseAmount = pricing.baseAmount || 0;
+  const gstAmount = pricing.gstAmount || 0;
+  const discountAmount = pricing.discountAmount || 0;
+  const finalAmount = pricing.finalAmount || 0;
+  const advancePaid = data.billing?.advance || 0;
+  const balanceDue = finalAmount - advancePaid;
   
-  let x = MARGIN;
-  doc.fontSize(7).font('Helvetica-Bold').fillColor(GRAY);
-  headers.forEach((h, i) => {
-    doc.text(h, x, y, { width: colWidths[i], align: i === 0 ? 'left' : 'right' });
-    x += colWidths[i];
-  });
-  y += 14;
-  
-  doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).strokeColor('#e2e8f0').lineWidth(0.3).stroke();
-  y += 6;
-  
-  doc.fontSize(8).font('Helvetica').fillColor(DARK);
-  rows.forEach(row => {
-    x = MARGIN;
-    row.forEach((cell, i) => {
-      doc.text(String(cell || '-'), x, y, { width: colWidths[i], align: i === 0 ? 'left' : 'right' });
-      x += colWidths[i];
-    });
-    y += 13;
-  });
-  
-  return y + 5;
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1a1a1a; background: #fff; }
+    .container { max-width: 750px; margin: 0 auto; }
+    .header { background: #0d7a4a; color: white; padding: 20px 25px; display: flex; align-items: center; gap: 20px; }
+    .logo { width: 65px; height: 65px; border-radius: 6px; object-fit: contain; background: white; padding: 4px; }
+    .company-info h1 { font-size: 18px; font-weight: bold; margin-bottom: 4px; }
+    .company-info p { font-size: 10px; opacity: 0.9; }
+    .title-bar { background: #e8f5ec; padding: 12px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0d7a4a; }
+    .title-bar h2 { color: #0d7a4a; font-size: 16px; font-weight: bold; }
+    .title-bar .meta { font-size: 10px; color: #666; }
+    .section { padding: 15px 25px; border-bottom: 1px solid #eee; }
+    .section-title { font-size: 11px; font-weight: bold; color: #0d7a4a; text-transform: uppercase; letter-spacing: 1px; padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid #d1e8d8; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+    .info-box { background: #f8f9fa; padding: 10px 12px; border-radius: 4px; border-left: 3px solid #0d7a4a; }
+    .info-label { font-size: 9px; color: #888; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.5px; }
+    .info-value { font-size: 12px; font-weight: bold; color: #1a1a1a; }
+    .info-value.highlight { color: #0d7a4a; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: bold; background: #0d7a4a; color: white; }
+    .services-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .service-tag { background: #e8f5ec; color: #0d7a4a; padding: 5px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th { background: #0d7a4a; color: white; padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; }
+    td { padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 11px; }
+    .total-row { background: #0d7a4a !important; color: white; font-weight: bold; }
+    .pricing-box { background: linear-gradient(135deg, #0d7a4a, #0a5c39); color: white; padding: 20px 25px; border-radius: 8px; }
+    .pricing-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.3); font-size: 11px; }
+    .pricing-total { display: flex; justify-content: space-between; padding-top: 12px; margin-top: 8px; border-top: 2px solid white; font-size: 14px; font-weight: bold; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; padding: 0 25px; }
+    .sig-box { text-align: center; }
+    .sig-label { font-size: 9px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
+    .sig-area { height: 50px; background: #f8f9fa; border-bottom: 2px solid #333; margin-bottom: 8px; }
+    .sig-name { font-size: 11px; font-weight: bold; }
+    .sig-date { font-size: 10px; color: #666; }
+    .footer { background: #1a1a1a; color: white; padding: 15px 25px; text-align: center; font-size: 9px; margin-top: 20px; }
+    .footer p { opacity: 0.8; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .two-col .section { border-right: 1px solid #eee; }
+    .att-section { background: #f0f7ff; border-left: 3px solid #2563eb; }
+    .att-section .section-title { color: #2563eb; border-color: #bfdbfe; }
+    @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      ${logo ? `<img src="${logo}" class="logo" alt="Logo">` : ''}
+      <div class="company-info">
+        <h1>${companyInfo.name}</h1>
+        <p>Professional Pest Control Services | ISO 9001:2015 Certified</p>
+        <p style="font-size: 9px; margin-top: 4px;">Head Office: ${companyInfo.headOffice}</p>
+        <p style="font-size: 9px;">Regional Office: ${companyInfo.regionalOffice}</p>
+        <p style="font-size: 9px;">${companyInfo.website} | ${companyInfo.email} | Ph: ${companyInfo.phone}</p>
+        <p style="font-size: 8px;">CIN: ${companyInfo.cin} | TAN: ${companyInfo.tan} | PAN: ${companyInfo.pan}</p>
+      </div>
+    </div>
+    <div class="title-bar">
+      <h2>SERVICE JOB CARD</h2>
+      <div class="meta">
+        <strong>${data.orderNo || 'DRAFT'}</strong> | ${formatDate(data.createdAt)} | <span class="badge">${data.status || 'SUBMITTED'}</span>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="section">
+        <div class="section-title">Customer Information</div>
+        <div class="grid-2">
+          <div class="info-box"><div class="info-label">Name</div><div class="info-value">${cust.title || ''} ${cust.name || '-'}</div></div>
+          <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${cust.phone || '-'}</div></div>
+          <div class="info-box"><div class="info-label">Email</div><div class="info-value" style="font-size:10px">${cust.email || '-'}</div></div>
+          <div class="info-box"><div class="info-label">GST No</div><div class="info-value">${cust.gstNo || '-'}</div></div>
+        </div>
+        <div class="info-box" style="margin-top:12px"><div class="info-label">Address</div><div class="info-value" style="font-size:11px">${cust.address || '-'}, ${cust.city || ''}</div></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Service Details</div>
+        <div class="grid-2">
+          <div class="info-box"><div class="info-label">Branch</div><div class="info-value">${data.branchId?.branchName || '-'}</div></div>
+          <div class="info-box"><div class="info-label">Category</div><div class="info-value">${data.serviceCategory || '-'}</div></div>
+          <div class="info-box"><div class="info-label">Service Type</div><div class="info-value highlight">${data.serviceType || 'AMC'}</div></div>
+          <div class="info-box"><div class="info-label">Premises</div><div class="info-value">${premises.type || '-'}</div></div>
+          <div class="info-box"><div class="info-label">Schedule Date</div><div class="info-value">${schedule.date || '-'}</div></div>
+          <div class="info-box"><div class="info-label">Schedule Time</div><div class="info-value">${schedule.time || '-'}</div></div>
+        </div>
+      </div>
+    </div>
+    ${(data.serviceType === 'AMC' || data.serviceType === 'BOTH') && amcServices.length > 0 ? `
+    <div class="section">
+      <div class="section-title">AMC Services (Pest Control)</div>
+      <div class="services-list">${amcServices.map(s => `<span class="service-tag">${s}</span>`).join('')}</div>
+      <div class="grid-3" style="margin-top:15px">
+        <div class="info-box"><div class="info-label">Rate per Sq.Ft.</div><div class="info-value">${formatCurrency(data.ratePerSqft || 0)}</div></div>
+        <div class="info-box"><div class="info-label">Total Area</div><div class="info-value">${formatNum(totalArea)} Sq.Ft.</div></div>
+        <div class="info-box"><div class="info-label">Reference</div><div class="info-value">${data.reference || 'Walk-in'}</div></div>
+      </div>
+    </div>` : ''}
+    ${(data.serviceType === 'ATT' || data.serviceType === 'BOTH') ? `
+    <div class="section att-section">
+      <div class="section-title">ATT Services (Anti Termite Treatment)</div>
+      <div class="grid-4">
+        <div class="info-box"><div class="info-label">Treatment</div><div class="info-value highlight">${attDetails.prePost === 'POST' ? 'POST-TREATMENT' : 'PRE-TREATMENT'}</div></div>
+        <div class="info-box"><div class="info-label">Treatment Types</div><div class="info-value" style="font-size:10px">${(attDetails.treatmentTypes || []).join(', ') || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Chemicals</div><div class="info-value" style="font-size:10px">${(attDetails.chemicals || []).join(', ') || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Warranty</div><div class="info-value" style="color:#dc2626">${attDetails.warranty || '-'}</div></div>
+      </div>
+      <div class="grid-4" style="margin-top:12px">
+        <div class="info-box"><div class="info-label">Methods</div><div class="info-value" style="font-size:10px">${(attDetails.methods || []).join(', ') || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Base Solution</div><div class="info-value" style="font-size:10px">${(attDetails.baseSolutions || []).join(', ') || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Rate per Sq.Ft.</div><div class="info-value">${formatCurrency(data.ratePerSqft || 0)}</div></div>
+        <div class="info-box"><div class="info-label">Total Area</div><div class="info-value">${formatNum(totalArea)} Sq.Ft.</div></div>
+      </div>
+    </div>` : ''}
+    ${floors.length > 0 ? `
+    <div class="section">
+      <div class="section-title">Premises - Floor Details</div>
+      <table>
+        <thead><tr><th>Floor</th><th>Length (ft)</th><th>Width (ft)</th><th>Area (sqft)</th></tr></thead>
+        <tbody>
+          ${floors.map(f => `<tr><td>${f.label || 'Floor'}</td><td>${formatNum(f.length)}</td><td>${formatNum(f.width)}</td><td>${formatNum(f.area)}</td></tr>`).join('')}
+          <tr class="total-row"><td colspan="3">TOTAL AREA</td><td>${formatNum(totalArea)} Sq.Ft.</td></tr>
+        </tbody>
+      </table>
+    </div>` : ''}
+    <div class="section">
+      <div class="section-title">Price Details</div>
+      <div class="pricing-box">
+        <div class="pricing-row"><span>Base Amount</span><span>${formatCurrency(baseAmount)}</span></div>
+        ${pricing.gstPercent > 0 ? `<div class="pricing-row"><span>GST (${pricing.gstPercent}%)</span><span>+ ${formatCurrency(gstAmount)}</span></div>` : ''}
+        ${pricing.discountPercent > 0 ? `<div class="pricing-row"><span>Discount (${pricing.discountPercent}%)</span><span>- ${formatCurrency(discountAmount)}</span></div>` : ''}
+        <div class="pricing-total"><span>TOTAL AMOUNT</span><span>${formatCurrency(finalAmount)}</span></div>
+        ${advancePaid > 0 ? `<div style="margin-top:12px; padding-top:12px; border-top:1px dashed rgba(255,255,255,0.3);"><div class="pricing-row"><span>Advance Paid</span><span>${formatCurrency(advancePaid)}</span></div><div class="pricing-row"><span>Balance Due</span><span>${formatCurrency(balanceDue)}</span></div></div>` : ''}
+      </div>
+    </div>
+    ${data.employeeId?.name ? `
+    <div class="section">
+      <div class="section-title">Field Executive</div>
+      <div class="grid-2">
+        <div class="info-box"><div class="info-label">Name</div><div class="info-value">${data.employeeId.name}</div></div>
+        <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${data.employeeId.phone || '-'}</div></div>
+      </div>
+    </div>` : ''}
+    <div class="signatures">
+      <div class="sig-box"><div class="sig-label">Executive Signature</div><div class="sig-area"></div><div class="sig-name">${data.employeeId?.name || 'Executive'}</div><div class="sig-date">Date: ___________</div></div>
+      <div class="sig-box"><div class="sig-label">Customer Signature</div><div class="sig-area"></div><div class="sig-name">${cust.name || 'Customer'}</div><div class="sig-date">Date: ___________</div></div>
+    </div>
+    <div class="footer"><p>This is a computer-generated document. Generated on: ${new Date().toLocaleString('en-IN')}</p><p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p></div>
+  </div>
+</body>
+</html>`;
 };
 
-const drawSignature = (doc, y) => {
-  y += 10;
-  doc.fontSize(7).font('Helvetica').fillColor(GRAY)
-    .text('Executive Signature', MARGIN + 30, y, { width: 120, align: 'center' })
-    .text('Customer Signature', PAGE_W - MARGIN - 150, y, { width: 120, align: 'center' });
-  y += 5;
-  doc.rect(MARGIN + 20, y, 120, 35).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
-  doc.rect(PAGE_W - MARGIN - 140, y, 120, 35).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
-  return y + 50;
+const getReceiptHTML = async (data) => {
+  const logo = await getLogoBase64();
+  const companyInfo = await getCompanyInfo();
+  const cust = data.customer || {};
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1a1a1a; background: #fff; }
+    .container { max-width: 750px; margin: 0 auto; }
+    .header { background: #0d7a4a; color: white; padding: 20px 25px; display: flex; align-items: center; gap: 20px; }
+    .logo { width: 65px; height: 65px; border-radius: 6px; object-fit: contain; background: white; padding: 4px; }
+    .company-info h1 { font-size: 18px; font-weight: bold; }
+    .company-info p { font-size: 10px; opacity: 0.9; }
+    .title-bar { background: #e8f5ec; padding: 12px 25px; border-bottom: 2px solid #0d7a4a; text-align: center; }
+    .title-bar h2 { color: #0d7a4a; font-size: 16px; font-weight: bold; }
+    .section { padding: 15px 25px; border-bottom: 1px solid #eee; }
+    .section-title { font-size: 11px; font-weight: bold; color: #0d7a4a; text-transform: uppercase; padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid #d1e8d8; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .info-box { background: #f8f9fa; padding: 10px 12px; border-radius: 4px; border-left: 3px solid #0d7a4a; }
+    .info-label { font-size: 9px; color: #888; text-transform: uppercase; margin-bottom: 3px; }
+    .info-value { font-size: 12px; font-weight: bold; color: #1a1a1a; }
+    .payment-box { background: linear-gradient(135deg, #0d7a4a, #0a5c39); color: white; padding: 20px 25px; border-radius: 8px; text-align: center; }
+    .payment-box .amount { font-size: 28px; font-weight: bold; }
+    .pricing-box { background: #f8f9fa; padding: 15px 25px; border-radius: 8px; margin-top: 15px; }
+    .pricing-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; }
+    .pricing-total { display: flex; justify-content: space-between; padding-top: 10px; margin-top: 10px; border-top: 2px solid #0d7a4a; font-weight: bold; font-size: 14px; color: #0d7a4a; }
+    .footer { background: #1a1a1a; color: white; padding: 15px 25px; text-align: center; font-size: 9px; margin-top: 20px; }
+    @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      ${logo ? `<img src="${logo}" class="logo" alt="Logo">` : ''}
+      <div class="company-info">
+        <h1>${companyInfo.name}</h1>
+        <p>Professional Pest Control Services | ISO 9001:2015 Certified</p>
+        <p style="font-size: 9px; margin-top: 4px;">Head Office: ${companyInfo.headOffice}</p>
+        <p style="font-size: 9px;">Regional Office: ${companyInfo.regionalOffice}</p>
+        <p style="font-size: 9px;">${companyInfo.website} | ${companyInfo.email} | Ph: ${companyInfo.phone}</p>
+        <p style="font-size: 8px;">CIN: ${companyInfo.cin} | TAN: ${companyInfo.tan} | PAN: ${companyInfo.pan}</p>
+      </div>
+    </div>
+    <div class="title-bar"><h2>PAYMENT RECEIPT</h2></div>
+    <div class="section">
+      <div class="section-title">Receipt Details</div>
+      <div class="grid-2">
+        <div class="info-box"><div class="info-label">Receipt No</div><div class="info-value">${data.receiptNo || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Date</div><div class="info-value">${formatDate(data.paymentDate)}</div></div>
+        <div class="info-box"><div class="info-label">Service Type</div><div class="info-value">${data.serviceType || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Branch</div><div class="info-value">${data.branchId?.branchName || '-'}</div></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">Customer Information</div>
+      <div class="grid-2">
+        <div class="info-box"><div class="info-label">Name</div><div class="info-value">${data.customerName || '-'}</div></div>
+        <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${data.customerPhone || '-'}</div></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">Payment Summary</div>
+      <div class="payment-box">
+        <div style="font-size:11px;opacity:0.9">Amount Received</div>
+        <div class="amount">${formatCurrency(data.advancePaid || 0)}</div>
+        <div style="font-size:11px;margin-top:5px">via ${data.paymentMode || 'Cash'}${data.transactionId ? ' | Ref: ' + data.transactionId : ''}</div>
+      </div>
+      <div class="pricing-box">
+        <div class="pricing-row"><span>Total Amount</span><span>${formatCurrency(data.totalAmount || 0)}</span></div>
+        <div class="pricing-row"><span>Paid Amount</span><span style="color:#0d7a4a">${formatCurrency(data.advancePaid || 0)}</span></div>
+        <div class="pricing-row"><span>Balance Due</span><span style="color:#dc2626">${formatCurrency(data.balanceDue || 0)}</span></div>
+        <div class="pricing-total"><span>STATUS</span><span>${(data.balanceDue || 0) <= 0 ? 'PAID' : 'PARTIALLY PAID'}</span></div>
+      </div>
+    </div>
+    <div class="footer"><p>This is a computer-generated receipt. Generated on: ${new Date().toLocaleString('en-IN')}</p><p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p></div>
+  </div>
+</body>
+</html>`;
 };
 
-const drawFooter = (doc, y) => {
-  doc.fontSize(7).font('Helvetica').fillColor(GRAY)
-    .text('This is a computer-generated document.', MARGIN, y, { width: CONTENT_W, align: 'center' })
-    .text('Generated on: ' + new Date().toLocaleString('en-IN'), MARGIN, y + 10, { width: CONTENT_W, align: 'center' });
+const getEnquiryListHTML = (enquiries) => {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    .header { background: #0d7a4a; color: white; padding: 20px; text-align: center; }
+    .header h1 { font-size: 18px; font-weight: bold; }
+    .header p { font-size: 10px; opacity: 0.9; margin-top: 5px; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    th { background: #f1f5f9; padding: 8px 5px; text-align: left; border-bottom: 2px solid #e2e8f0; }
+    td { padding: 8px 5px; border-bottom: 1px solid #f1f5f9; }
+    .footer { background: #1a1a1a; color: white; padding: 10px; text-align: center; font-size: 9px; margin-top: 20px; }
+    @media print { body { print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>ENQUIRY REPORT</h1><p>Total Records: ${enquiries.length} | Generated: ${new Date().toLocaleString('en-IN')}</p></div>
+    <table>
+      <thead><tr><th>ID</th><th>Customer</th><th>Mobile</th><th>Service</th><th>City</th><th>Status</th><th>Priority</th><th>Source</th></tr></thead>
+      <tbody>
+        ${enquiries.map(e => `<tr><td>${e.enquiryId || '-'}</td><td>${e.customerName || '-'}</td><td>${e.mobile || '-'}</td><td>${e.serviceType || '-'}</td><td>${e.city || '-'}</td><td>${e.status || '-'}</td><td>${e.priority || '-'}</td><td>${e.source || '-'}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="footer">SAFE HOME PESTOCHEM INDIA PVT. LTD.</div>
+  </div>
+</body>
+</html>`;
 };
 
-const drawPageNumbers = (doc) => {
-  const range = doc.bufferedPageRange();
-  for (let i = range.start; i < range.start + range.count; i++) {
-    doc.switchToPage(i);
-    doc.fontSize(7).fillColor(GRAY)
-      .text('Page ' + (i + 1) + ' of ' + range.count, MARGIN, PAGE_H - 30, { width: CONTENT_W, align: 'center' });
-  }
-};
-
-// ==========================================
-// RECEIPT PDF GENERATION
-// ==========================================
-exports.generateReceiptPdf = async (receiptDoc) => {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ 
-        size: 'A4', 
-        margin: 0, 
-        bufferPages: true,
-        info: {
-          Title: 'Payment Receipt',
-          Author: 'Safe Home Pestochem',
-        }
-      });
-      const buffers = [];
-      doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => {
-        try {
-          const result = Buffer.concat(buffers);
-          resolve(result);
-        } catch (err) {
-          reject(err);
-        }
-      });
-      doc.on('error', (err) => {
-        console.error('PDFDocument error:', err);
-        reject(err);
-      });
-
-      let y = drawLogoHeader(doc);
-      y = drawTitle(doc, y, 'PAYMENT RECEIPT / INVOICE');
-
-      // Receipt Info
-      y = drawSectionHeader(doc, y, 'Receipt Information');
-      y = drawHR(doc, y) + 8;
-      y = drawTwoColumns(doc, y, [
-        { label: 'Receipt No', value: receiptDoc.receiptNo },
-        { label: 'Date', value: formatDate(receiptDoc.paymentDate) },
-        { label: 'Service Type', value: receiptDoc.serviceType },
-        { label: 'Status', value: receiptDoc.status },
-        { label: 'Branch', value: receiptDoc.branchId?.branchName || '-' }
-      ]);
-
-      // Customer Info
-      y = drawSectionHeader(doc, y, 'Customer Information');
-      y = drawHR(doc, y) + 8;
-      y = drawTwoColumns(doc, y, [
-        { label: 'Name', value: receiptDoc.customerName },
-        { label: 'Phone', value: receiptDoc.customerPhone },
-        { label: 'Email', value: receiptDoc.customerEmail || '-' },
-        { label: 'GST No', value: receiptDoc.customerGstNo || '-' }
-      ]);
-      y = drawLabelValue(doc, y, 'Address', receiptDoc.customerAddress || '-');
-
-      // Floor Details
-      if (receiptDoc.floors && receiptDoc.floors.length > 0) {
-        y = checkPage(doc, y, 100);
-        y = drawSectionHeader(doc, y, 'Floor Wise Area Details');
-        y = drawHR(doc, y) + 8;
-        
-        const headers = ['Floor', 'Length (ft)', 'Width (ft)', 'Area (sqft)'];
-        const colWidths = [150, 120, 120, 150];
-        const rows = receiptDoc.floors.map(f => [f.label || 'Floor', formatNum(f.length), formatNum(f.width), formatNum(f.area)]);
-        
-        y = drawTable(doc, y, headers, rows, colWidths);
-        
-        let totalArea = receiptDoc.floors.reduce((sum, f) => sum + (f.area || 0), 0);
-        doc.fontSize(9).font('Helvetica-Bold').fillColor(BRAND_COLOR)
-          .text('TOTAL AREA:', MARGIN, y, { width: 150 })
-          .text(formatNum(totalArea) + ' Sq.Ft.', PAGE_W - MARGIN - 150, y, { width: 150, align: 'right' });
-        y += 20;
-      }
-
-      // AMC Section
-      if (receiptDoc.serviceType === 'AMC' || receiptDoc.serviceType === 'BOTH') {
-        y = checkPage(doc, y, 150);
-        y = drawSectionHeader(doc, y, 'AMC Services (Pest Control)', BRAND_COLOR);
-        y = drawHR(doc, y, BRAND_COLOR) + 8;
-        
-        // Contract Details
-        if (receiptDoc.amcId && receiptDoc.amcId.contractNo) {
-          const amc = receiptDoc.amcId;
-          y = drawTwoColumns(doc, y, [
-            { label: 'Contract No', value: amc.contractNo },
-            { label: 'Status', value: amc.status || 'ACTIVE', color: BRAND_COLOR, bold: true },
-            { label: 'Start Date', value: formatDate(amc.startDate) },
-            { label: 'End Date', value: formatDate(amc.endDate) }
-          ]);
-          if (amc.servicesIncluded && amc.servicesIncluded.length > 0) {
-            doc.fontSize(8).font('Helvetica').fillColor(GRAY).text('Services:', MARGIN, y);
-            y += 13;
-            doc.fontSize(8).font('Helvetica-Bold').fillColor(DARK)
-              .text(amc.servicesIncluded.join(', '), MARGIN + 85, y - 13);
-          }
-        }
-        
-        // Rate & Amount
-        y += 5;
-        y = drawBox(doc, y, [
-          { label: 'Total Area', value: formatNum(receiptDoc.totalArea || 0) + ' Sq.Ft.' },
-          { label: 'Rate per Sq.Ft.', value: formatCurrency(receiptDoc.amcRatePerSqft || 0) },
-          { label: 'AMC Amount', value: formatCurrency(receiptDoc.amcAmount || 0), color: BRAND_COLOR, bold: true }
-        ], BRAND_LIGHT);
-      }
-
-      // ATT Section
-      if (receiptDoc.serviceType === 'ATT' || receiptDoc.serviceType === 'BOTH') {
-        y = checkPage(doc, y, 150);
-        y = drawSectionHeader(doc, y, 'ATT Services (Anti Termite Treatment)', ATT_COLOR);
-        y = drawHR(doc, y, ATT_COLOR) + 8;
-        
-        const att = receiptDoc.attDetails || {};
-        y = drawTwoColumns(doc, y, [
-          { label: 'Phase', value: att.constructionPhase || '-' },
-          { label: 'Treatment', value: att.treatmentType || '-' },
-          { label: 'Chemical', value: att.chemical || '-' },
-          { label: 'Method', value: att.method || '-' }
-        ]);
-        if (att.warranty) y = drawLabelValue(doc, y, 'Warranty', att.warranty);
-        
-        y += 5;
-        y = drawBox(doc, y, [
-          { label: 'Total Area', value: formatNum(receiptDoc.totalArea || 0) + ' Sq.Ft.' },
-          { label: 'Rate per Sq.Ft.', value: formatCurrency(att.ratePerSqft || receiptDoc.attRatePerSqft || 0) },
-          { label: 'ATT Amount', value: formatCurrency(receiptDoc.attAmount || 0), color: ATT_COLOR, bold: true }
-        ], ATT_LIGHT);
-      }
-
-      // Price Calculation
-      y = checkPage(doc, y, 160);
-      y = drawSectionHeader(doc, y, 'Price Calculation');
-      y = drawHR(doc, y) + 8;
-      y = drawBox(doc, y, [
-        { label: 'Base Amount', value: formatCurrency(receiptDoc.baseAmount || 0) },
-        { label: 'GST (' + (receiptDoc.gstPercent || 18) + '%)', value: '+' + formatCurrency(receiptDoc.gstAmount || 0), color: BRAND_COLOR },
-        { label: 'Discount (' + (receiptDoc.discountPercent || 0) + '%)', value: '-' + formatCurrency(receiptDoc.discountAmount || 0), color: '#dc2626' }
-      ]);
-      
-      y += 5;
-      doc.rect(MARGIN, y, CONTENT_W, 30).fillAndStroke('#f0fdf4', BRAND_COLOR);
-      doc.fontSize(11).font('Helvetica-Bold').fillColor(BRAND_COLOR)
-        .text('TOTAL:', MARGIN + 10, y + 8)
-        .text(formatCurrency(receiptDoc.totalAmount || 0), PAGE_W - MARGIN - 120, y + 8, { width: 110, align: 'right' });
-      y += 35;
-
-      // Payment Summary
-      y = drawSectionHeader(doc, y, 'Payment Details');
-      y = drawHR(doc, y) + 8;
-      y = drawTwoColumns(doc, y, [
-        { label: 'Payment Mode', value: receiptDoc.paymentMode },
-        { label: 'Transaction ID', value: receiptDoc.transactionId || '-' },
-        { label: 'Paid Amount', value: formatCurrency(receiptDoc.advancePaid || 0), color: BRAND_COLOR },
-        { label: 'Balance Due', value: formatCurrency(receiptDoc.balanceDue || 0), color: receiptDoc.balanceDue > 0 ? '#dc2626' : BRAND_COLOR }
-      ]);
-
-      y = checkPage(doc, y, 80);
-      y = drawSignature(doc, y);
-      y += 10;
-      drawFooter(doc, y);
-      
-      drawPageNumbers(doc);
-      doc.end();
-    } catch (error) {
-      console.error('PDF Error:', error);
-      reject(error);
-    }
-  });
-};
-
-// ==========================================
-// JOB CARD PDF GENERATION
-// ==========================================
 exports.generateJobCardPdf = async (formDoc) => {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ 
-        size: 'A4', 
-        margin: 0, 
-        bufferPages: true,
-        info: {
-          Title: 'Service Job Card',
-          Author: 'Safe Home Pestochem',
-        }
-      });
-      const buffers = [];
-      doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => {
-        try {
-          const result = Buffer.concat(buffers);
-          resolve(result);
-        } catch (err) {
-          reject(err);
-        }
-      });
-      doc.on('error', (err) => {
-        console.error('PDFDocument error:', err);
-        reject(err);
-      });
-
-      let y = drawLogoHeader(doc);
-      y = drawTitle(doc, y, 'SERVICE JOB CARD');
-
-      // Order Info
-      y = drawSectionHeader(doc, y, 'Order Information');
-      y = drawHR(doc, y) + 8;
-      y = drawTwoColumns(doc, y, [
-        { label: 'Order No', value: formDoc.orderNo },
-        { label: 'Date', value: formatDate(formDoc.createdAt) },
-        { label: 'Status', value: formDoc.status },
-        { label: 'Branch', value: formDoc.branchId?.branchName || '-' }
-      ]);
-
-      // Customer Info
-      y = drawSectionHeader(doc, y, 'Customer Information');
-      y = drawHR(doc, y) + 8;
-      const cust = formDoc.customer || {};
-      y = drawTwoColumns(doc, y, [
-        { label: 'Name', value: cust.name || '-' },
-        { label: 'Phone', value: cust.phone || '-' },
-        { label: 'Email', value: cust.email || '-' },
-        { label: 'GST No', value: cust.gstNo || '-' }
-      ]);
-      if (cust.address) y = drawLabelValue(doc, y, 'Address', cust.address);
-
-      // Service Details
-      y = drawSectionHeader(doc, y, 'Service Details');
-      y = drawHR(doc, y) + 8;
-      y = drawTwoColumns(doc, y, [
-        { label: 'Category', value: formDoc.serviceCategory || '-' },
-        { label: 'Service Type', value: formDoc.serviceType || 'AMC' },
-        { label: 'Premises', value: formDoc.premises?.type || '-' },
-        { label: 'Reference', value: formDoc.reference || 'Walk-in' }
-      ]);
-
-      // Schedule
-      if (formDoc.schedule) {
-        y = drawSectionHeader(doc, y, 'Schedule');
-        y = drawHR(doc, y) + 8;
-        y = drawTwoColumns(doc, y, [
-          { label: 'Type', value: formDoc.schedule.type || '-' },
-          { label: 'Date', value: formDoc.schedule.date || '-' },
-          { label: 'Time', value: formDoc.schedule.time || '-' }
-        ]);
-      }
-
-      // AMC Services
-      if ((formDoc.serviceType === 'AMC' || formDoc.serviceType === 'BOTH') && formDoc.amcServices?.length > 0) {
-        y = checkPage(doc, y, 100);
-        y = drawSectionHeader(doc, y, 'AMC Services', BRAND_COLOR);
-        y = drawHR(doc, y, BRAND_COLOR) + 8;
-        doc.fontSize(8).font('Helvetica').fillColor(DARK)
-          .text(formDoc.amcServices.join(', '), MARGIN, y, { width: CONTENT_W });
-        y += 15;
-        y = drawTwoColumns(doc, y, [
-          { label: 'Rate per Sq.Ft.', value: formatCurrency(formDoc.ratePerSqft || 0) },
-          { label: 'Total Area', value: formatNum(formDoc.premises?.totalArea || 0) + ' Sq.Ft.' }
-        ]);
-      }
-
-      // ATT Services
-      if ((formDoc.serviceType === 'ATT' || formDoc.serviceType === 'BOTH') && formDoc.attDetails) {
-        y = checkPage(doc, y, 120);
-        y = drawSectionHeader(doc, y, 'ATT Services', ATT_COLOR);
-        y = drawHR(doc, y, ATT_COLOR) + 8;
-        const att = formDoc.attDetails;
-        y = drawTwoColumns(doc, y, [
-          { label: 'Phase', value: att.constructionPhase || '-' },
-          { label: 'Treatment', value: att.treatmentType || '-' },
-          { label: 'Chemical', value: att.chemical || '-' },
-          { label: 'Warranty', value: att.warranty || '-' }
-        ]);
-      }
-
-      // Floor Details
-      if (formDoc.premises?.floors?.length > 0) {
-        y = checkPage(doc, y, 100);
-        y = drawSectionHeader(doc, y, 'Premises - Floor Details');
-        y = drawHR(doc, y) + 8;
-        
-        const headers = ['Floor', 'Length', 'Width', 'Area'];
-        const colWidths = [150, 120, 120, 150];
-        const rows = formDoc.premises.floors.map(f => [f.label || 'Floor', formatNum(f.length) + ' ft', formatNum(f.width) + ' ft', formatNum(f.area) + ' sqft']);
-        
-        y = drawTable(doc, y, headers, rows, colWidths);
-        
-        doc.fontSize(9).font('Helvetica-Bold').fillColor(BRAND_COLOR)
-          .text('TOTAL AREA:', MARGIN, y, { width: 150 })
-          .text(formatNum(formDoc.premises.totalArea || 0) + ' Sq.Ft.', PAGE_W - MARGIN - 150, y, { width: 150, align: 'right' });
-        y += 20;
-      }
-
-      // Pricing
-      if (formDoc.pricing) {
-        y = checkPage(doc, y, 120);
-        y = drawSectionHeader(doc, y, 'Pricing');
-        y = drawHR(doc, y) + 8;
-        y = drawBox(doc, y, [
-          { label: 'Base Amount', value: formatCurrency(formDoc.pricing.baseAmount || 0) },
-          { label: 'GST (' + (formDoc.pricing.gstPercent || 18) + '%)', value: '+' + formatCurrency(formDoc.pricing.gstAmount || 0) },
-          { label: 'Final Amount', value: formatCurrency(formDoc.pricing.finalAmount || 0), color: BRAND_COLOR, bold: true }
-        ]);
-      }
-
-      // Pesticides
-      if (formDoc.pesticides?.length > 0) {
-        y = checkPage(doc, y, 80);
-        y = drawSectionHeader(doc, y, 'Pesticides / Chemicals Used');
-        y = drawHR(doc, y) + 8;
-        
-        const headers = ['#', 'Name', 'Quantity', 'Rate'];
-        const colWidths = [30, 200, 120, 180];
-        const rows = formDoc.pesticides.map((p, i) => [
-          String(i + 1), p.name || '-', (p.quantity || '-') + ' ' + (p.unit || 'L'), formatCurrency(p.rate || 0)
-        ]);
-        
-        y = drawTable(doc, y, headers, rows, colWidths);
-      }
-
-      // Executive
-      if (formDoc.employeeId?.name) {
-        y = drawSectionHeader(doc, y, 'Executive');
-        y = drawHR(doc, y) + 8;
-        y = drawTwoColumns(doc, y, [
-          { label: 'Name', value: formDoc.employeeId.name },
-          { label: 'Phone', value: formDoc.employeeId.phone || '-' }
-        ]);
-      }
-
-      y = checkPage(doc, y, 80);
-      y = drawSignature(doc, y);
-      y += 10;
-      drawFooter(doc, y);
-      
-      drawPageNumbers(doc);
-      doc.end();
-    } catch (error) {
-      console.error('PDF Error:', error);
-      reject(error);
-    }
-  });
+  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  try {
+    const page = await browser.newPage();
+    const html = await getJobCardHTML(formDoc);
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
+    await browser.close();
+    return Buffer.from(pdf);
+  } catch (error) {
+    await browser.close();
+    throw error;
+  }
 };
 
-// ==========================================
-// ENQUIRY LIST PDF
-// ==========================================
+exports.generateReceiptPdf = async (receiptDoc) => {
+  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  try {
+    const page = await browser.newPage();
+    const html = await getReceiptHTML(receiptDoc);
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
+    await browser.close();
+    return Buffer.from(pdf);
+  } catch (error) {
+    await browser.close();
+    throw error;
+  }
+};
+
 exports.generateEnquiryListPdf = async (enquiries) => {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ size: 'A4', margin: 30, layout: 'landscape', bufferPages: true });
-      const buffers = [];
-      doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-      doc.on('error', reject);
-
-      doc.fontSize(14).font('Helvetica-Bold').fillColor(DARK)
-        .text('ENQUIRY REPORT', 30, 30, { width: 800, align: 'center' });
-      
-      doc.fontSize(8).font('Helvetica').fillColor(GRAY)
-        .text('Total Records: ' + enquiries.length + ' | Generated: ' + new Date().toLocaleString('en-IN'), 30, 50, { width: 800 });
-
-      const headers = ['ID', 'Customer', 'Mobile', 'Service', 'City', 'Status', 'Priority', 'Source'];
-      const colWidths = [90, 130, 80, 90, 80, 80, 70, 70];
-      
-      let y = 70;
-      let x = 30;
-      
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY);
-      headers.forEach((h, i) => {
-        doc.text(h, x, y, { width: colWidths[i] });
-        x += colWidths[i];
-      });
-      y += 15;
-      
-      doc.moveTo(30, y).lineTo(830, y).strokeColor('#e2e8f0').lineWidth(0.3).stroke();
-      y += 8;
-
-      doc.fontSize(7).font('Helvetica').fillColor(DARK);
-      enquiries.forEach((enq) => {
-        if (y > 550) {
-          doc.addPage();
-          y = 30;
-        }
-        
-        x = 30;
-        const row = [
-          enq.enquiryId || '-',
-          (enq.customerName || '').substring(0, 20),
-          enq.mobile || '-',
-          enq.serviceType || '-',
-          enq.city || '-',
-          enq.status || '-',
-          enq.priority || '-',
-          enq.source || '-'
-        ];
-        
-        row.forEach((cell, i) => {
-          doc.text(cell, x, y, { width: colWidths[i] });
-          x += colWidths[i];
-        });
-        y += 13;
-      });
-
-      drawPageNumbers(doc);
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
-  });
+  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(getEnquiryListHTML(enquiries), { waitUntil: 'networkidle0' });
+    const pdf = await page.pdf({ format: 'A4', landscape: true, printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
+    await browser.close();
+    return Buffer.from(pdf);
+  } catch (error) {
+    await browser.close();
+    throw error;
+  }
 };

@@ -99,7 +99,7 @@ exports.updateAMC = catchAsync(async (req, res, next) => {
     return next(new AppError('Permission Denied', 403));
   }
 
-  amc = await AMC.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+  amc = await AMC.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after', runValidators: true });
 
   res.status(200).json({ success: true, data: amc });
 });

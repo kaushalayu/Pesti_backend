@@ -36,7 +36,10 @@ exports.getServiceRates = catchAsync(async (req, res, next) => {
   if (serviceName) query.serviceName = serviceName;
   if (branchId) query.branchId = branchId;
   
-  const rates = await ServiceRate.find(query).sort('serviceName category');
+  const rates = await ServiceRate.find(query)
+    .select('serviceName price')
+    .sort('serviceName')
+    .lean();
   
   res.status(200).json({ success: true, count: rates.length, data: rates });
 });
@@ -73,7 +76,7 @@ exports.updateServiceRate = catchAsync(async (req, res, next) => {
   const rate = await ServiceRate.findByIdAndUpdate(
     id,
     req.body,
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
   
   if (!rate) {
@@ -89,7 +92,7 @@ exports.deleteServiceRate = catchAsync(async (req, res, next) => {
   const rate = await ServiceRate.findByIdAndUpdate(
     id,
     { isActive: false },
-    { new: true }
+    { returnDocument: 'after' }
   );
   
   if (!rate) {

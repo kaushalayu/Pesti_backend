@@ -6,6 +6,7 @@ const employeeRoutes = require('./employeeRoutes');
 const formRoutes = require('./formRoutes');
 const receiptRoutes = require('./receiptRoutes');
 const enquiryRoutes = require('./enquiryRoutes');
+const leadRoutes = require('./leadRoutes');
 const dashboardRoutes = require('./dashboardRoutes');
 const collectionRoutes = require('./collectionRoutes');
 const inventoryRoutes = require('./inventoryRoutes');
@@ -18,13 +19,12 @@ const notificationRoutes = require('./notificationRoutes');
 const travelLogRoutes = require('./travelLogRoutes');
 const purchaseRequestRoutes = require('./purchaseRequestRoutes');
 const stockTransferRoutes = require('./stockTransferRoutes');
-const hqAccountRoutes = require('./hqAccountRoutes');
 const ledgerRoutes = require('./ledgerRoutes');
 const taskAssignmentRoutes = require('./taskAssignmentRoutes');
+const complainRoutes = require('./complainRoutes');
 
 const router = express.Router();
 
-// Debug test - inline route
 router.get('/test-collections', (req, res) => res.json({ test: 'works' }));
 
 router.use('/auth', authRoutes);
@@ -34,6 +34,7 @@ router.use('/employees', employeeRoutes);
 router.use('/forms', formRoutes);
 router.use('/receipts', receiptRoutes);
 router.use('/enquiries', enquiryRoutes);
+router.use('/leads', leadRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/collections', collectionRoutes);
 router.use('/inventory', inventoryRoutes);
@@ -46,8 +47,8 @@ router.use('/notifications', notificationRoutes);
 router.use('/travel-logs', travelLogRoutes);
 router.use('/purchase-requests', purchaseRequestRoutes);
 router.use('/stock-transfers', stockTransferRoutes);
-router.use('/hq-account', hqAccountRoutes);
 router.use('/ledger', ledgerRoutes);
 router.use('/task-assignments', taskAssignmentRoutes);
+router.use('/complains', complainRoutes);
 
 module.exports = router;
