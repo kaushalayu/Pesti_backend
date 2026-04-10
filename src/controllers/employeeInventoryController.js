@@ -22,11 +22,21 @@ exports.getMyInventory = catchAsync(async (req, res, next) => {
   for (const dist of distributions) {
     for (const item of dist.items) {
       const chemId = item.chemicalId.toString();
+      
+      // Get chemical name - lookup if missing
+      let chemicalName = item.chemicalName;
+      let category = item.category;
+      if (!chemicalName || chemicalName === 'Unknown') {
+        const chemical = await Chemical.findById(item.chemicalId);
+        chemicalName = chemical?.name || chemicalName || 'Unknown';
+        category = chemical?.category || category || '';
+      }
+      
       if (!inventoryMap[chemId]) {
         inventoryMap[chemId] = {
           chemicalId: item.chemicalId,
-          chemicalName: item.chemicalName,
-          category: item.category,
+          chemicalName: chemicalName,
+          category: category,
           unit: item.unit,
           totalReceived: 0,
           totalReturned: 0,

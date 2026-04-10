@@ -275,8 +275,16 @@ exports.getEmployeePerformance = catchAsync(async (req, res, next) => {
 // @route   GET /api/dashboard/combined
 // @access  Private (All roles)
 exports.getCombinedDashboard = catchAsync(async (req, res, next) => {
-  const branchFilter = getBranchFilter(req);
-  const leadFilter = getLeadFilter(req);
+  let branchFilter = getBranchFilter(req);
+  let leadFilter = getLeadFilter(req);
+  
+  // Super admin can filter by specific branch
+  if (req.user.role === 'super_admin' && req.query.branchId) {
+    const branchId = req.query.branchId;
+    branchFilter = { branchId: new mongoose.Types.ObjectId(branchId) };
+    leadFilter = { branchId: new mongoose.Types.ObjectId(branchId) };
+  }
+  
   const now = new Date();
 
   const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);

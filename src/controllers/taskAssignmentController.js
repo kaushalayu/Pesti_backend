@@ -223,7 +223,10 @@ const getAvailableEmployees = catchAsync(async (req, res, next) => {
     role: { $in: ["technician", "sales"] },
     isActive: true,
   };
-  if (branchId) {
+  
+  // Super admin can see all employees, others see only their branch
+  const isSuperAdmin = req.user.role === 'super_admin';
+  if (branchId && !isSuperAdmin) {
     try {
       employeeQuery.branchId = new mongoose.Types.ObjectId(branchId);
     } catch (e) {
@@ -259,6 +262,11 @@ const getAvailableEmployees = catchAsync(async (req, res, next) => {
 });
 
 const assignTask = catchAsync(async (req, res, next) => {
+  // Only admin roles can assign tasks
+  if (req.user.role !== 'super_admin' && req.user.role !== 'branch_admin' && req.user.role !== 'office') {
+    return next(new AppError("Only admins can assign tasks", 403));
+  }
+
   const { serviceFormId, assignedTo, scheduledDate, notes } = req.body;
 
   if (!serviceFormId) {
@@ -314,43 +322,30 @@ const assignTask = catchAsync(async (req, res, next) => {
     );
   }
 
-  // Check if there's an ACTIVE assignment (with someone actually assigned)
-  // Ignore assignments where assignedTo is null - those are awaiting assignment
-  const existingAssignment = await TaskAssignment.findOne({
-    serviceFormId,
-    assignedTo: { $ne: null }, // Only check if someone IS assigned
-    status: { $in: ["ASSIGNED", "ACCEPTED", "PENDING"] },
-  });
-
-  console.log("=== TASK ASSIGNMENT DEBUG ===");
-  console.log("serviceFormId:", serviceFormId);
-  console.log("existingAssignment:", existingAssignment);
-  console.log("Check query:", {
+  // Check if there's an ACTIVE assignment with assignedTo already set
+  // This prevents assigning to another person until the current one responds
+  const existingAssignmentWithEmployee = await TaskAssignment.findOne({
     serviceFormId,
     assignedTo: { $ne: null },
-    status: { $in: ["ASSIGNED", "ACCEPTED", "PENDING"] },
+    status: { $in: ["PENDING", "ASSIGNED", "ACCEPTED"] },
   });
 
-  if (existingAssignment) {
-    console.log("ERROR: Booking already assigned!");
+  if (existingAssignmentWithEmployee) {
+    const assignedEmployee = await User.findById(existingAssignmentWithEmployee.assignedTo).select('name');
+    const employeeName = assignedEmployee?.name || 'Unknown';
+    
     return next(
-      new AppError("This booking is already assigned to an employee", 400),
+      new AppError(`This booking is already assigned to ${employeeName} and is ${existingAssignmentWithEmployee.status}. Cannot assign to another person until they accept or decline.`, 400),
     );
   }
 
-  // Also check for any TaskAssignment at all for this form
-  const allTaskAssignments = await TaskAssignment.find({ serviceFormId });
-  console.log("All TaskAssignments for this form:", allTaskAssignments.length);
-  console.log(
-    "TaskAssignments:",
-    JSON.stringify(
-      allTaskAssignments.map((t) => ({
-        _id: t._id,
-        assignedTo: t.assignedTo,
-        status: t.status,
-      })),
-    ),
-  );
+  // Also check if there's a PENDING task without assignedTo - this means it's awaiting first assignment
+  // Allow this to proceed (will update the existing task with assignedTo)
+  const existingUnassignedTask = await TaskAssignment.findOne({
+    serviceFormId,
+    assignedTo: null,
+    status: "PENDING"
+  });
 
   // Find existing unassigned TaskAssignment (if any) and update it, or create new one
   let task = await TaskAssignment.findOne({
@@ -368,13 +363,7 @@ const assignTask = catchAsync(async (req, res, next) => {
     task.assignedAt = new Date();
     try {
       await task.save();
-      console.log("Task updated and saved:", {
-        taskId: task._id,
-        assignedTo: task.assignedTo,
-        status: task.status,
-      });
     } catch (saveError) {
-      console.error("Error saving task:", saveError);
       return next(new AppError("Failed to save task assignment", 500));
     }
   } else {
@@ -390,13 +379,7 @@ const assignTask = catchAsync(async (req, res, next) => {
         status: "PENDING",
         assignedAt: new Date(),
       });
-      console.log("Task created:", {
-        taskId: task._id,
-        assignedTo: task.assignedTo,
-        status: task.status,
-      });
     } catch (createError) {
-      console.error("Error creating task:", createError);
       return next(new AppError("Failed to create task assignment", 500));
     }
   }
@@ -434,16 +417,6 @@ const acceptTask = catchAsync(async (req, res, next) => {
   if (!task) {
     return next(new AppError("Task not found", 404));
   }
-
-  console.log("Accept Task Debug:", {
-    taskId: req.params.id,
-    taskAssignedTo: task.assignedTo,
-    reqUserId: req.user._id,
-    taskStatus: task.status,
-    reqUserRole: req.user.role,
-    taskBranchId: task.branchId,
-    reqUserBranchId: req.user.branchId,
-  });
 
   // Allow if task is assigned to the user
   const isAssignedToUser =

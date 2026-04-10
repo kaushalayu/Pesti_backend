@@ -181,6 +181,15 @@ exports.assignLead = catchAsync(async (req, res, next) => {
   const lead = await Lead.findById(req.params.id);
   if (!lead) return next(new AppError('No lead found with that ID', 404));
 
+  // Check if lead is already assigned to someone
+  if (lead.assignedTo && lead.assignedTo.toString() !== assignedTo) {
+    const currentAssignee = await User.findById(lead.assignedTo).select('name');
+    const assigneeName = currentAssignee?.name || 'Unknown';
+    return next(
+      new AppError(`This lead is already assigned to ${assigneeName}. Please complete or unassign the current person before assigning to someone else.`, 400)
+    );
+  }
+
   if (req.user.role === 'super_admin') {
     // Super admin: any branch, any user
     if (branchId) lead.branchId = branchId;
@@ -356,12 +365,31 @@ exports.getFollowUps = catchAsync(async (req, res, next) => {
     queryObj.assignedTo = req.user._id;
   }
 
-  // Default: show leads with upcoming followups
-  if (!queryObj.filter) {
+  // Handle followUpDue filter
+  const { followUpDue } = req.query;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  if (followUpDue === 'overdue') {
+    queryObj.nextFollowUp = { $lt: today, $ne: null };
+  } else if (followUpDue === 'today') {
+    queryObj.nextFollowUp = { $gte: today, $lt: tomorrow };
+  } else if (followUpDue === 'upcoming') {
+    queryObj.nextFollowUp = { $gte: tomorrow };
+  } else {
+    // Default: show leads with any nextFollowUp set (including all statuses)
     queryObj.nextFollowUp = { $ne: null };
   }
+
+  // Also allow leads without nextFollowUp when followUpDue is 'all' or not set
+  if (followUpDue === 'all' || !followUpDue) {
+    delete queryObj.nextFollowUp;
+  }
+
   let query = Lead.find(queryObj)
-    .select('name phone city status priority nextFollowUp branchId assignedTo serviceInterest budget')
+    .select('name phone city status priority nextFollowUp branchId assignedTo serviceInterest budget leadScore followups')
     .populate('assignedTo', 'name employeeId')
     .populate('branchId', 'branchName branchCode');
 
@@ -426,7 +454,14 @@ exports.getLeadStats = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    data: { statusStats, priorityStats, todayFollowups, overdueFollowups, totalLeads, newToday }
+    data: { 
+      statusStats, 
+      priorityStats, 
+      followupsToday: todayFollowups, 
+      overdueFollowups, 
+      totalLeads, 
+      newToday 
+    }
   });
 });
 

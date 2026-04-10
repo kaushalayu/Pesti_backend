@@ -422,7 +422,7 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
 
   // Auto-create AMC contract when form is submitted with AMC services
   if (oldStatus === 'DRAFT' && status === 'SUBMITTED') {
-    const shouldCreateAMC = (form.serviceType === 'AMC' || form.serviceType === 'BOTH') 
+    const shouldCreateAMC = (form.serviceType === 'AMC' || form.serviceType === 'BOTH' || form.serviceType === 'GPC_ATT') 
       && form.amcServices && form.amcServices.length > 0;
     
     if (shouldCreateAMC) {
@@ -448,7 +448,7 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
           servicesPerMonth: form.schedule?.servicesPerMonth || 1,
           totalServices: form.schedule?.serviceCount || 1,
           interval: form.schedule?.intervalDays || 30,
-          totalAmount: form.pricing?.finalAmount || 0,
+          totalAmount: form.serviceType === 'GPC_ATT' ? (form.pricing?.gpcSubtotal || 0) : (form.pricing?.finalAmount || 0),
           paidAmount: form.billing?.advance || 0,
           status: 'ACTIVE',
         };
@@ -478,12 +478,11 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
           notes: 'Auto-created when booking form was submitted - awaiting assignment',
           status: 'PENDING'
         });
-        console.log(`Auto-created TaskAssignment for submitted form ${form.orderNo}`);
       } else {
-        console.log(`TaskAssignment already exists for form ${form.orderNo} (${existingTasks.length} found)`);
+        // TaskAssignment already exists
       }
     } catch (taskError) {
-      console.error('Error auto-creating TaskAssignment:', taskError.message);
+      // Silent fail for auto-creation
     }
   }
 
@@ -491,11 +490,8 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
   if (status === 'SCHEDULED' && oldStatus !== 'SCHEDULED') {
     try {
       const TaskAssignment = require('../models/TaskAssignment');
-      // Check for any TaskAssignment with this form (including null assignedTo)
       const existingTasks = await TaskAssignment.find({ serviceFormId: form._id });
-      console.log(`Form ${form.orderNo} has ${existingTasks.length} existing TaskAssignments`);
       
-      // Don't create duplicate - only create if none exist
       if (existingTasks.length === 0) {
         await TaskAssignment.create({
           serviceFormId: form._id,
@@ -506,7 +502,6 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
           notes: 'Auto-created when booking was scheduled - awaiting assignment',
           status: 'PENDING'
         });
-        console.log(`Auto-created TaskAssignment for scheduled form ${form.orderNo}`);
       } else {
         // Update scheduled date on existing tasks
         for (const task of existingTasks) {
@@ -565,15 +560,13 @@ exports.updateFormStatus = catchAsync(async (req, res, next) => {
           totalAmount: totalAmount,
           advancePaid: advancePaid,
           balanceDue: balanceDue,
-          paymentMode: advancePaid > 0 ? 'PENDING' : 'PENDING', // Mark as pending if no payment yet
+          paymentMode: advancePaid > 0 ? 'PENDING' : 'PENDING',
           status: 'PENDING',
           notes: 'Auto-generated receipt when booking was scheduled',
         });
-        
-        console.log(`Auto-generated Receipt for scheduled form ${form.orderNo}`);
       }
     } catch (receiptError) {
-      console.error('Error auto-generating Receipt:', receiptError.message);
+      // Silent fail for auto-receipt
     }
   }
 

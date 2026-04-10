@@ -8,6 +8,8 @@ const chemicalSchema = new mongoose.Schema(
     unit: { type: String, required: true },
     description: { type: String },
     mainStock: { type: Number, default: 0 },
+    bottles: { type: Number, default: 0 },
+    bottleSize: { type: Number, default: 1 },
     purchasePrice: { type: Number, default: 0 },
     branchPrice: { type: Number, default: 0 },
     unitSystem: { 

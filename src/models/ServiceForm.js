@@ -33,6 +33,9 @@ const attDetailsSchema = new mongoose.Schema({
   preChemical: { type: String },
   preApplicationMethod: { type: String },
   preBaseSolution: { type: String },
+  // New PRE treatment fields
+  systemType: { type: String, enum: ['Liner Pipe', 'Gride Pipe', 'Ring Pipe'] },
+  pipeQuality: { type: String },
   // Post-treatment values
   postTreatmentType: { type: String },
   postChemical: { type: String },
@@ -74,7 +77,7 @@ const serviceFormSchema = new mongoose.Schema(
 
     serviceType: {
       type: String,
-      enum: ['AMC', 'GPC', 'ATT', 'BOTH'],
+      enum: ['AMC', 'GPC', 'ATT', 'BOTH', 'GPC_ATT'],
       required: true,
     },
 
@@ -105,7 +108,15 @@ const serviceFormSchema = new mongoose.Schema(
       gstAmount: { type: Number, default: 0 },
       discountPercent: { type: Number, default: 0 },
       discountAmount: { type: Number, default: 0 },
-      finalAmount: { type: Number, default: 0 }
+      finalAmount: { type: Number, default: 0 },
+      gpcAmount: { type: Number, default: 0 },
+      gpcDiscountPercent: { type: Number, default: 0 },
+      gpcDiscountAmount: { type: Number, default: 0 },
+      gpcSubtotal: { type: Number, default: 0 },
+      attAmount: { type: Number, default: 0 },
+      attDiscountPercent: { type: Number, default: 0 },
+      attDiscountAmount: { type: Number, default: 0 },
+      attSubtotal: { type: Number, default: 0 }
     },
 
     schedule: {

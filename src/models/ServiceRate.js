@@ -34,7 +34,7 @@ const serviceRateSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-serviceRateSchema.index({ serviceName: 1, category: 1, branchId: 1 }, { unique: true });
+serviceRateSchema.index({ serviceName: 1, category: 1, branchId: 1 }, { unique: true, partialFilterExpression: { isActive: true } });
 serviceRateSchema.index({ category: 1, isActive: 1 });
 serviceRateSchema.index({ branchId: 1, isActive: 1 });
 

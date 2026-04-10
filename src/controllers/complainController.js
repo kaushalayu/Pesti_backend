@@ -14,7 +14,8 @@ const createComplain = async (req, res, next) => {
       customerPhone: req.body.customerPhone || '',
       complainType: req.body.complainType,
       description: req.body.description,
-      priority: req.body.priority || 'MEDIUM'
+      priority: req.body.priority || 'MEDIUM',
+      assignedToBranch: req.body.complainBranchId || req.user.branchId
     });
 
     await complain.save();
@@ -31,9 +32,28 @@ const createComplain = async (req, res, next) => {
 
 const getMyComplains = async (req, res, next) => {
   try {
-    const complains = await Complain.find({ userId: req.user._id })
+    let query = {};
+    
+    // Branch admins see all complaints in their branch
+    if (req.user.role === 'branch_admin' || req.user.role === 'office') {
+      const branchId = typeof req.user.branchId === 'object' ? req.user.branchId._id : req.user.branchId;
+      query = { 
+        $or: [
+          { branchId: branchId },           // Complaints filed from this branch
+          { assignedToBranch: branchId }    // Complaints assigned to this branch
+        ]
+      };
+    } else {
+      // Regular users see only their own complaints
+      query = { userId: req.user._id };
+    }
+
+    const complains = await Complain.find(query)
+      .populate('userId', 'name phone')
+      .populate('branchId', 'branchName branchCode')
+      .populate('assignedToBranch', 'branchName branchCode')
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(100);
 
     res.status(200).json({
       success: true,

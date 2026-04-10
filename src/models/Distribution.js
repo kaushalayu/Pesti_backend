@@ -10,6 +10,7 @@ const distributionSchema = new mongoose.Schema({
     category: { type: String },
     quantity: { type: Number, required: true },
     unit: { type: String, default: 'L' },
+    bottles: { type: Number, default: 0 },
     rate: { type: Number, required: true },
     value: { type: Number, required: true },
     returnedQty: { type: Number, default: 0 }

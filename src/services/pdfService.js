@@ -3,6 +3,7 @@ const path = require("path");
 const puppeteer = require("puppeteer");
 
 const LOGO_PATH = path.join(__dirname, "../../pest/public/logo.jpg");
+const LOGO_PATH_PNG = path.join(__dirname, "../../pest/public/logo.png");
 
 const getCompanySettings = async () => {
   try {
@@ -20,14 +21,22 @@ const getCompanySettings = async () => {
 const getLogoBase64 = async () => {
   try {
     const settings = await getCompanySettings();
-    if (settings?.logo) {
+    // First check if logo is stored in database
+    if (settings?.logo && settings.logo.length > 100) {
       return settings.logo;
     }
+    // Fallback to file system - try JPG first, then PNG
     if (fs.existsSync(LOGO_PATH)) {
       const buffer = fs.readFileSync(LOGO_PATH);
       return `data:image/jpeg;base64,${buffer.toString("base64")}`;
     }
-  } catch (e) {}
+    if (fs.existsSync(LOGO_PATH_PNG)) {
+      const buffer = fs.readFileSync(LOGO_PATH_PNG);
+      return `data:image/png;base64,${buffer.toString("base64")}`;
+    }
+  } catch (e) {
+    console.error('Logo loading error:', e.message);
+  }
   return null;
 };
 
@@ -40,8 +49,7 @@ const getCompanyInfo = async () => {
         email: settings.email || "enquiry@safehomepestochem.in",
         phone: settings.phone || "25709",
         website: settings.website || "www.safehomepestochem.com",
-        headOffice: settings.headOffice?.address || "",
-        regionalOffice: settings.regionalOffice?.address || "",
+        headOffice: settings.regionalOffice?.address || settings.headOffice?.address || "",
         cin: settings.cinNo || "",
         tan: settings.tanNo || "",
         pan: settings.panNo || "",
@@ -54,10 +62,7 @@ const getCompanyInfo = async () => {
     email: "enquiry@safehomepestochem.in",
     phone: "25709",
     website: "www.safehomepestochem.com",
-    headOffice:
-      "House No. 780-J, Chaksa Husain, Pachpedwa, Ramjanki Nagar, Basaratpur, Gorakhpur-273004",
-    regionalOffice:
-      "H. No-68, Pink City, Sec. 06, Jankipuram Extn., Near Kendria Vihar Colony, Lucknow-226021",
+    headOffice: "H. No-68, Pink City, Sec. 06, Jankipuram Extn., Near Kendria Vihar Colony, Lucknow-226021",
     cin: "U52100UP2022PTC164278",
     tan: "ALDS10486A",
     pan: "ABICS5318P",
@@ -92,17 +97,28 @@ const getJobCardHTML = async (data) => {
   const schedule = data.schedule || {};
   const premises = data.premises || {};
   const attDetails = data.attDetails || {};
+  const billing = data.billing || {};
+  const contract = data.contract || {};
+  const logistics = data.logistics || {};
+  const serviceDetails = data.serviceDetails || {};
+  const executive = data.executive || {};
+  const signatures = data.signatures || {};
+  const pesticides = data.pesticides || [];
 
   const floors = premises.floors || [];
   const amcServices = data.amcServices || [];
+  const scheduledDates = schedule.scheduledDates || [];
 
   const totalArea = premises.totalArea || 0;
   const baseAmount = pricing.baseAmount || 0;
   const gstAmount = pricing.gstAmount || 0;
   const discountAmount = pricing.discountAmount || 0;
   const finalAmount = pricing.finalAmount || 0;
-  const advancePaid = data.billing?.advance || 0;
+  const advancePaid = billing.advance || 0;
   const balanceDue = finalAmount - advancePaid;
+
+  const employeeSignature = signatures.employeeSignature || null;
+  const customerSignature = signatures.customerSignature || null;
 
   return `<!DOCTYPE html>
 <html>
@@ -111,11 +127,12 @@ const getJobCardHTML = async (data) => {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1a1a1a; background: #fff; }
-    .container { max-width: 750px; margin: 0 auto; }
+    .container { max-width: 800px; margin: 0 auto; }
     .header { background: #0d7a4a; color: white; padding: 20px 25px; display: flex; align-items: center; gap: 20px; }
-    .logo { width: 65px; height: 65px; border-radius: 6px; object-fit: contain; background: white; padding: 4px; }
+    .logo { width: 70px; height: 70px; border-radius: 8px; object-fit: contain; background: white; padding: 5px; }
     .company-info h1 { font-size: 18px; font-weight: bold; margin-bottom: 4px; }
     .company-info p { font-size: 10px; opacity: 0.9; }
+    .company-info .address { font-size: 9px; margin-top: 4px; line-height: 1.4; }
     .title-bar { background: #e8f5ec; padding: 12px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0d7a4a; }
     .title-bar h2 { color: #0d7a4a; font-size: 16px; font-weight: bold; }
     .title-bar .meta { font-size: 10px; color: #666; }
@@ -129,6 +146,7 @@ const getJobCardHTML = async (data) => {
     .info-value { font-size: 12px; font-weight: bold; color: #1a1a1a; }
     .info-value.highlight { color: #0d7a4a; }
     .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: bold; background: #0d7a4a; color: white; }
+    .badge.contract { background: #7c3aed; }
     .services-list { display: flex; flex-wrap: wrap; gap: 8px; }
     .service-tag { background: #e8f5ec; color: #0d7a4a; padding: 5px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -141,15 +159,22 @@ const getJobCardHTML = async (data) => {
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; padding: 0 25px; }
     .sig-box { text-align: center; }
     .sig-label { font-size: 9px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
-    .sig-area { height: 50px; background: #f8f9fa; border-bottom: 2px solid #333; margin-bottom: 8px; }
+    .sig-area { height: 60px; background: #f8f9fa; border-bottom: 2px solid #333; margin-bottom: 8px; }
+    .sig-area img { max-width: 100%; height: 58px; object-fit: contain; }
     .sig-name { font-size: 11px; font-weight: bold; }
     .sig-date { font-size: 10px; color: #666; }
     .footer { background: #1a1a1a; color: white; padding: 15px 25px; text-align: center; font-size: 9px; margin-top: 20px; }
     .footer p { opacity: 0.8; }
+    .footer .terms { font-size: 8px; margin-top: 8px; line-height: 1.5; opacity: 0.85; border-top: 1px solid #333; padding-top: 10px; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
     .two-col .section { border-right: 1px solid #eee; }
     .att-section { background: #f0f7ff; border-left: 3px solid #2563eb; }
     .att-section .section-title { color: #2563eb; border-color: #bfdbfe; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; }
+    .three-col .section { border-right: 1px solid #eee; }
+    .three-col .section:last-child { border-right: none; }
+    .pesticides-table th { background: #7c3aed; }
+    .remarks-box { background: #fef3c7; padding: 10px 12px; border-radius: 4px; border-left: 3px solid #f59e0b; font-size: 11px; }
     @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
   </style>
 </head>
@@ -160,8 +185,7 @@ const getJobCardHTML = async (data) => {
       <div class="company-info">
         <h1>${companyInfo.name}</h1>
         <p>Professional Pest Control Services | ISO 9001:2015 Certified</p>
-        <p style="font-size: 9px; margin-top: 4px;">Head Office: ${companyInfo.headOffice}</p>
-        <p style="font-size: 9px;">Regional Office: ${companyInfo.regionalOffice}</p>
+        <p class="address">Head Office: ${companyInfo.headOffice}</p>
         <p style="font-size: 9px;">${companyInfo.website} | ${companyInfo.email} | Ph: ${companyInfo.phone}</p>
         <p style="font-size: 8px;">CIN: ${companyInfo.cin} | TAN: ${companyInfo.tan} | PAN: ${companyInfo.pan}</p>
       </div>
@@ -169,49 +193,89 @@ const getJobCardHTML = async (data) => {
     <div class="title-bar">
       <h2>SERVICE JOB CARD</h2>
       <div class="meta">
-        <strong>${data.orderNo || "DRAFT"}</strong> | ${formatDate(data.createdAt)} | <span class="badge">${data.status || "SUBMITTED"}</span>
+        <strong>${data.orderNo || "DRAFT"}</strong> ${data.contractNo ? `| <span class="badge contract">${data.contractNo}</span>` : ""} | ${formatDate(data.createdAt)} | <span class="badge">${data.status || "SUBMITTED"}</span>
       </div>
     </div>
-    <div class="two-col">
+    <div class="three-col">
       <div class="section">
         <div class="section-title">Customer Information</div>
         <div class="grid-2">
           <div class="info-box"><div class="info-label">Name</div><div class="info-value">${cust.title || ""} ${cust.name || "-"}</div></div>
           <div class="info-box"><div class="info-label">Phone</div><div class="info-value">${cust.phone || "-"}</div></div>
-          <div class="info-box"><div class="info-label">Email</div><div class="info-value" style="font-size:10px">${cust.email || "-"}</div></div>
+        </div>
+        <div class="grid-2" style="margin-top:8px">
+          <div class="info-box"><div class="info-label">WhatsApp</div><div class="info-value">${cust.whatsapp || "-"}</div></div>
           <div class="info-box"><div class="info-label">GST No</div><div class="info-value">${cust.gstNo || "-"}</div></div>
         </div>
-        <div class="info-box" style="margin-top:12px"><div class="info-label">Address</div><div class="info-value" style="font-size:11px">${cust.address || "-"}, ${cust.city || ""}</div></div>
+        <div class="info-box" style="margin-top:8px"><div class="info-label">Email</div><div class="info-value" style="font-size:10px">${cust.email || "-"}</div></div>
+        <div class="info-box" style="margin-top:8px"><div class="info-label">Address</div><div class="info-value" style="font-size:10px">${cust.address || "-"}, ${cust.city || ""}</div></div>
       </div>
       <div class="section">
         <div class="section-title">Service Details</div>
         <div class="grid-2">
           <div class="info-box"><div class="info-label">Branch</div><div class="info-value">${data.branchId?.branchName || "-"}</div></div>
           <div class="info-box"><div class="info-label">Category</div><div class="info-value">${data.serviceCategory || "-"}</div></div>
+        </div>
+        <div class="grid-2" style="margin-top:8px">
           <div class="info-box"><div class="info-label">Service Type</div><div class="info-value highlight">${data.serviceType || "AMC"}</div></div>
           <div class="info-box"><div class="info-label">Premises</div><div class="info-value">${premises.type || "-"}</div></div>
+        </div>
+        <div class="grid-2" style="margin-top:8px">
+          <div class="info-box"><div class="info-label">Reference</div><div class="info-value">${data.reference || "Walk-in"}</div></div>
+          <div class="info-box"><div class="info-label">Reference By</div><div class="info-value">${data.referenceBy || "-"}</div></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">Schedule & Executive</div>
+        <div class="grid-2">
           <div class="info-box"><div class="info-label">Schedule Date</div><div class="info-value">${schedule.date || "-"}</div></div>
           <div class="info-box"><div class="info-label">Schedule Time</div><div class="info-value">${schedule.time || "-"}</div></div>
         </div>
+        ${schedule.serviceCount ? `<div class="grid-3" style="margin-top:8px">
+          <div class="info-box"><div class="info-label">Services</div><div class="info-value">${schedule.serviceCount || "-"}</div></div>
+          <div class="info-box"><div class="info-label">Interval</div><div class="info-value">${schedule.intervalDays || "-"} days</div></div>
+          <div class="info-box"><div class="info-label">Period</div><div class="info-value">${schedule.period || "-"} months</div></div>
+        </div>` : ""}
+        ${executive.name || executive.phone ? `
+        <div class="grid-2" style="margin-top:8px">
+          <div class="info-box"><div class="info-label">Executive</div><div class="info-value">${executive.name || "-"}</div></div>
+          <div class="info-box"><div class="info-label">Executive Phone</div><div class="info-value">${executive.phone || "-"}</div></div>
+        </div>
+        ` : ""}
       </div>
     </div>
     ${
-      (data.serviceType === "AMC" || data.serviceType === "BOTH") &&
+      (data.serviceType === "AMC" || data.serviceType === "GPC" || data.serviceType === "BOTH") &&
       amcServices.length > 0
         ? `
     <div class="section">
-      <div class="section-title">AMC Services (Pest Control)</div>
+      <div class="section-title">${data.serviceType === "GPC" ? "GPC Services" : "AMC Services"} (Pest Control)</div>
       <div class="services-list">${amcServices.map((s) => `<span class="service-tag">${s}</span>`).join("")}</div>
       <div class="grid-3" style="margin-top:15px">
         <div class="info-box"><div class="info-label">Rate per Sq.Ft.</div><div class="info-value">${formatCurrency(data.ratePerSqft || 0)}</div></div>
         <div class="info-box"><div class="info-label">Total Area</div><div class="info-value">${formatNum(totalArea)} Sq.Ft.</div></div>
-        <div class="info-box"><div class="info-label">Reference</div><div class="info-value">${data.reference || "Walk-in"}</div></div>
+        <div class="info-box"><div class="info-label">Base Amount</div><div class="info-value">${formatCurrency(data.pricing?.gpcAmount || baseAmount)}</div></div>
       </div>
     </div>`
         : ""
     }
     ${
-      data.serviceType === "ATT" || data.serviceType === "BOTH"
+      data.serviceType === "GPC_ATT" && amcServices.length > 0
+        ? `
+    <div class="section">
+      <div class="section-title">GPC Services (Pest Control)</div>
+      <div class="services-list">${amcServices.map((s) => `<span class="service-tag">${s}</span>`).join("")}</div>
+      <div class="grid-3" style="margin-top:15px">
+        <div class="info-box"><div class="info-label">Total Area</div><div class="info-value">${formatNum(totalArea)} Sq.Ft.</div></div>
+        <div class="info-box"><div class="info-label">GPC Amount</div><div class="info-value">${formatCurrency(pricing.gpcAmount || 0)}</div></div>
+        ${(pricing.gpcDiscountPercent || 0) > 0 ? `<div class="info-box"><div class="info-label">GPC Discount (${pricing.gpcDiscountPercent}%)</div><div class="info-value">-${formatCurrency(pricing.gpcDiscountAmount || 0)}</div></div>` : ""}
+        <div class="info-box"><div class="info-label">GPC Subtotal</div><div class="info-value">${formatCurrency(pricing.gpcSubtotal || 0)}</div></div>
+      </div>
+    </div>`
+        : ""
+    }
+    ${
+      data.serviceType === "ATT" || data.serviceType === "BOTH" || data.serviceType === "GPC_ATT"
         ? `
     <div class="section att-section">
       <div class="section-title">ATT Services (Anti Termite Treatment)</div>
@@ -227,6 +291,13 @@ const getJobCardHTML = async (data) => {
         <div class="info-box"><div class="info-label">Rate per Sq.Ft.</div><div class="info-value">${formatCurrency(data.ratePerSqft || 0)}</div></div>
         <div class="info-box"><div class="info-label">Total Area</div><div class="info-value">${formatNum(totalArea)} Sq.Ft.</div></div>
       </div>
+      ${data.serviceType === "GPC_ATT" && (pricing.attAmount || 0) > 0 ? `
+      <div class="grid-4" style="margin-top:12px">
+        <div class="info-box"><div class="info-label">ATT Amount</div><div class="info-value">${formatCurrency(pricing.attAmount || 0)}</div></div>
+        ${(pricing.attDiscountPercent || 0) > 0 ? `<div class="info-box"><div class="info-label">ATT Discount (${pricing.attDiscountPercent}%)</div><div class="info-value">-${formatCurrency(pricing.attDiscountAmount || 0)}</div></div>` : ""}
+        <div class="info-box"><div class="info-label">ATT Subtotal</div><div class="info-value">${formatCurrency(pricing.attSubtotal || 0)}</div></div>
+      </div>
+      ` : ""}
     </div>`
         : ""
     }
@@ -245,16 +316,106 @@ const getJobCardHTML = async (data) => {
     </div>`
         : ""
     }
+    ${
+      scheduledDates.length > 0
+        ? `
+    <div class="section">
+      <div class="section-title">Scheduled Services</div>
+      <table>
+        <thead><tr><th>#</th><th>Service Date</th><th>Day</th></tr></thead>
+        <tbody>
+          ${scheduledDates.map((sd, i) => `<tr><td>Service ${sd.dayNumber || (i + 1)}</td><td>${sd.formatted || sd.date || "-"}</td><td>${sd.dayNumber ? "Day " + sd.dayNumber : "-"}</td></tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`
+        : ""
+    }
+    ${
+      pesticides.length > 0
+        ? `
+    <div class="section">
+      <div class="section-title">Pesticides Used</div>
+      <table class="pesticides-table">
+        <thead><tr><th>#</th><th>Pesticide Name</th><th>Quantity</th><th>Unit</th><th>Rate</th></tr></thead>
+        <tbody>
+          ${pesticides.map((p, i) => `<tr><td>${i + 1}</td><td>${p.name || "-"}</td><td>${p.quantity || "-"}</td><td>${p.unit || "L"}</td><td>${p.rate ? formatCurrency(p.rate) : "-"}</td></tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`
+        : ""
+    }
     <div class="section">
       <div class="section-title">Price Details</div>
       <div class="pricing-box">
+        ${data.serviceType === "GPC_ATT" ? `
+        <div class="pricing-row" style="color:#fbbf24"><span>GPC Amount</span><span>${formatCurrency(pricing.gpcSubtotal || 0)}</span></div>
+        <div class="pricing-row" style="color:#60a5fa"><span>ATT Amount</span><span>${formatCurrency(pricing.attSubtotal || 0)}</span></div>
+        <div class="pricing-row" style="border-top:2px solid white;padding-top:8px;margin-top:4px"><span>Combined Base</span><span>${formatCurrency(baseAmount)}</span></div>
+        ${pricing.gstPercent > 0 ? `<div class="pricing-row"><span>GST (${pricing.gstPercent}%)</span><span>+ ${formatCurrency(gstAmount)}</span></div>` : ""}
+        ${pricing.discountPercent > 0 ? `<div class="pricing-row"><span>Extra Discount (${pricing.discountPercent}%)</span><span>- ${formatCurrency(discountAmount)}</span></div>` : ""}
+        <div class="pricing-total"><span>TOTAL AMOUNT</span><span>${formatCurrency(finalAmount)}</span></div>
+        ` : `
         <div class="pricing-row"><span>Base Amount</span><span>${formatCurrency(baseAmount)}</span></div>
         ${pricing.gstPercent > 0 ? `<div class="pricing-row"><span>GST (${pricing.gstPercent}%)</span><span>+ ${formatCurrency(gstAmount)}</span></div>` : ""}
         ${pricing.discountPercent > 0 ? `<div class="pricing-row"><span>Discount (${pricing.discountPercent}%)</span><span>- ${formatCurrency(discountAmount)}</span></div>` : ""}
         <div class="pricing-total"><span>TOTAL AMOUNT</span><span>${formatCurrency(finalAmount)}</span></div>
-        ${advancePaid > 0 ? `<div style="margin-top:12px; padding-top:12px; border-top:1px dashed rgba(255,255,255,0.3);"><div class="pricing-row"><span>Advance Paid</span><span>${formatCurrency(advancePaid)}</span></div><div class="pricing-row"><span>Balance Due</span><span>${formatCurrency(balanceDue)}</span></div></div>` : ""}
+        `}
+        ${advancePaid > 0 ? `<div style="margin-top:12px; padding-top:12px; border-top:1px dashed rgba(255,255,255,0.3);">
+          <div class="pricing-row"><span>Payment Mode</span><span>${billing.paymentMode || "Cash"}</span></div>
+          ${billing.transactionNo ? `<div class="pricing-row"><span>Transaction No.</span><span>${billing.transactionNo}</span></div>` : ""}
+          <div class="pricing-row"><span>Advance Paid</span><span>${formatCurrency(advancePaid)}</span></div>
+          <div class="pricing-row"><span>Balance Due</span><span>${formatCurrency(balanceDue)}</span></div>
+        </div>` : ""}
       </div>
     </div>
+    ${
+      contract.agreementArea || contract.period || contract.warranty || contract.startDate || contract.endDate
+        ? `
+    <div class="section">
+      <div class="section-title">Contract Details</div>
+      <div class="grid-4">
+        <div class="info-box"><div class="info-label">Agreement Area</div><div class="info-value">${contract.agreementArea ? formatNum(contract.agreementArea) + " Sq.Ft." : "-"}</div></div>
+        <div class="info-box"><div class="info-label">Contract Period</div><div class="info-value">${contract.period || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Warranty</div><div class="info-value">${contract.warranty || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Contract Rate</div><div class="info-value">${contract.ratePerSqft ? formatCurrency(contract.ratePerSqft) : "-"}</div></div>
+      </div>
+      ${contract.startDate || contract.endDate ? `
+      <div class="grid-2" style="margin-top:12px">
+        <div class="info-box"><div class="info-label">Start Date</div><div class="info-value">${contract.startDate || "-"}</div></div>
+        <div class="info-box"><div class="info-label">End Date</div><div class="info-value">${contract.endDate || "-"}</div></div>
+      </div>
+      ` : ""}
+    </div>`
+        : ""
+    }
+    ${
+      logistics.vehicleNo || logistics.startMeter || logistics.endMeter
+        ? `
+    <div class="section">
+      <div class="section-title">Logistics</div>
+      <div class="grid-3">
+        <div class="info-box"><div class="info-label">Vehicle No.</div><div class="info-value">${logistics.vehicleNo || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Start Meter</div><div class="info-value">${logistics.startMeter ? formatNum(logistics.startMeter) + " km" : "-"}</div></div>
+        <div class="info-box"><div class="info-label">End Meter</div><div class="info-value">${logistics.endMeter ? formatNum(logistics.endMeter) + " km" : "-"}</div></div>
+      </div>
+    </div>`
+        : ""
+    }
+    ${
+      serviceDetails.serviceDate || serviceDetails.startTime || serviceDetails.endTime || serviceDetails.duration || serviceDetails.remarks
+        ? `
+    <div class="section">
+      <div class="section-title">Service Completion Details</div>
+      <div class="grid-4">
+        <div class="info-box"><div class="info-label">Service Date</div><div class="info-value">${serviceDetails.serviceDate || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Start Time</div><div class="info-value">${serviceDetails.startTime || "-"}</div></div>
+        <div class="info-box"><div class="info-label">End Time</div><div class="info-value">${serviceDetails.endTime || "-"}</div></div>
+        <div class="info-box"><div class="info-label">Duration</div><div class="info-value">${serviceDetails.duration || "-"}</div></div>
+      </div>
+      ${serviceDetails.remarks ? `<div class="remarks-box" style="margin-top:12px"><div class="info-label">Remarks</div><div class="info-value">${serviceDetails.remarks}</div></div>` : ""}
+    </div>`
+        : ""
+    }
     ${
       data.employeeId?.name
         ? `
@@ -268,10 +429,26 @@ const getJobCardHTML = async (data) => {
         : ""
     }
     <div class="signatures">
-      <div class="sig-box"><div class="sig-label">Executive Signature</div><div class="sig-area"></div><div class="sig-name">${data.employeeId?.name || "Executive"}</div><div class="sig-date">Date: ___________</div></div>
-      <div class="sig-box"><div class="sig-label">Customer Signature</div><div class="sig-area"></div><div class="sig-name">${cust.name || "Customer"}</div><div class="sig-date">Date: ___________</div></div>
+      <div class="sig-box">
+        <div class="sig-label">Executive Signature</div>
+        <div class="sig-area">${employeeSignature ? `<img src="${employeeSignature}" alt="Executive Signature"/>` : ""}</div>
+        <div class="sig-name">${data.employeeId?.name || "Executive"}</div>
+        <div class="sig-date">Date: ___________</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-label">Customer Signature</div>
+        <div class="sig-area">${customerSignature ? `<img src="${customerSignature}" alt="Customer Signature"/>` : ""}</div>
+        <div class="sig-name">${cust.name || "Customer"}</div>
+        <div class="sig-date">Date: ___________</div>
+      </div>
     </div>
-    <div class="footer"><p>This is a computer-generated document. Generated on: ${new Date().toLocaleString("en-IN")}</p><p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p><p style="font-size:8px; margin-top:8px; line-height:1.4; opacity:0.85">Terms & Conditions: Service is subject to our standard terms. Please retain this document for future reference. Payments once made are non-refundable unless agreed in writing by authorized personnel.</p></div>
+    <div class="footer">
+      <p>This is a computer-generated document. Generated on: ${new Date().toLocaleString("en-IN")}</p>
+      <p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p>
+      <div class="terms">
+        <strong>Terms & Conditions:</strong> 1. Service is subject to our standard terms and conditions. 2. Please retain this document for future reference. 3. Payments once made are non-refundable unless agreed in writing by authorized personnel. 4. Warranty is valid only when full payment is received. 5. Company reserves the right to amend service schedule if required.
+      </div>
+    </div>
   </div>
 </body>
 </html>`;
@@ -290,9 +467,10 @@ const getReceiptHTML = async (data) => {
     body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1a1a1a; background: #fff; }
     .container { max-width: 750px; margin: 0 auto; }
     .header { background: #0d7a4a; color: white; padding: 20px 25px; display: flex; align-items: center; gap: 20px; }
-    .logo { width: 65px; height: 65px; border-radius: 6px; object-fit: contain; background: white; padding: 4px; }
+    .logo { width: 70px; height: 70px; border-radius: 8px; object-fit: contain; background: white; padding: 5px; }
     .company-info h1 { font-size: 18px; font-weight: bold; }
     .company-info p { font-size: 10px; opacity: 0.9; }
+    .company-info .address { font-size: 9px; margin-top: 4px; line-height: 1.4; }
     .title-bar { background: #e8f5ec; padding: 12px 25px; border-bottom: 2px solid #0d7a4a; text-align: center; }
     .title-bar h2 { color: #0d7a4a; font-size: 16px; font-weight: bold; }
     .section { padding: 15px 25px; border-bottom: 1px solid #eee; }
@@ -307,6 +485,7 @@ const getReceiptHTML = async (data) => {
     .pricing-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; }
     .pricing-total { display: flex; justify-content: space-between; padding-top: 10px; margin-top: 10px; border-top: 2px solid #0d7a4a; font-weight: bold; font-size: 14px; color: #0d7a4a; }
     .footer { background: #1a1a1a; color: white; padding: 15px 25px; text-align: center; font-size: 9px; margin-top: 20px; }
+    .footer .terms { font-size: 8px; margin-top: 8px; line-height: 1.5; opacity: 0.85; border-top: 1px solid #333; padding-top: 10px; }
     @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
   </style>
 </head>
@@ -317,8 +496,7 @@ const getReceiptHTML = async (data) => {
       <div class="company-info">
         <h1>${companyInfo.name}</h1>
         <p>Professional Pest Control Services | ISO 9001:2015 Certified</p>
-        <p style="font-size: 9px; margin-top: 4px;">Head Office: ${companyInfo.headOffice}</p>
-        <p style="font-size: 9px;">Regional Office: ${companyInfo.regionalOffice}</p>
+        <p class="address">Head Office: ${companyInfo.headOffice}</p>
         <p style="font-size: 9px;">${companyInfo.website} | ${companyInfo.email} | Ph: ${companyInfo.phone}</p>
         <p style="font-size: 8px;">CIN: ${companyInfo.cin} | TAN: ${companyInfo.tan} | PAN: ${companyInfo.pan}</p>
       </div>
@@ -354,7 +532,13 @@ const getReceiptHTML = async (data) => {
         <div class="pricing-total"><span>STATUS</span><span>${(data.balanceDue || 0) <= 0 ? "PAID" : "PARTIALLY PAID"}</span></div>
       </div>
     </div>
-    <div class="footer"><p>This is a computer-generated receipt. Generated on: ${new Date().toLocaleString("en-IN")}</p><p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p><p style="font-size:8px; margin-top:8px; line-height:1.4; opacity:0.85">Terms & Conditions: Payment is subject to our standard terms. Please retain this document for future reference. Payments once made are non-refundable unless agreed in writing by authorized personnel.</p></div>
+    <div class="footer">
+      <p>This is a computer-generated receipt. Generated on: ${new Date().toLocaleString("en-IN")}</p>
+      <p style="margin-top:4px">SAFE HOME PESTOCHEM INDIA PVT. LTD. | ISO 9001:2015 Certified</p>
+      <div class="terms">
+        <strong>Terms & Conditions:</strong> 1. Payment is subject to our standard terms. 2. Please retain this receipt for future reference. 3. Payments once made are non-refundable unless agreed in writing by authorized personnel. 4. This receipt is valid only when payment is realized. 5. For any query, contact us at ${companyInfo.email}.
+      </div>
+    </div>
   </div>
 </body>
 </html>`;

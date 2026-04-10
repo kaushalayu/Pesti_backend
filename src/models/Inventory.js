@@ -10,6 +10,9 @@ const inventorySchema = new mongoose.Schema(
     quantity: { type: Number, default: 0 },
     unit: { type: String, default: 'L' },
     
+    bottles: { type: Number, default: 0 },
+    bottleSize: { type: Number, default: 1 }, // in liters
+    
     unitPrice: { type: Number, default: 0 },
     totalValue: { type: Number, default: 0 },
     

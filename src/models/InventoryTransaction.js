@@ -17,6 +17,7 @@ const inventoryTransactionSchema = new mongoose.Schema(
     toType: { type: String, enum: ['super_admin', 'Branch', 'Employee', 'Usage'] },
     
     quantity: { type: Number, default: 0 },
+    bottles: { type: Number, default: 0 },
     unit: { type: String, default: 'L' },
     purchaseRate: { type: Number, default: 0 },
     transferRate: { type: Number, default: 0 },
@@ -25,7 +26,7 @@ const inventoryTransactionSchema = new mongoose.Schema(
     
     type: { 
       type: String, 
-      enum: ['STOCK_ADD', 'ASSIGNED', 'USAGE', 'RETURNED', 'PAYMENT', 'PURCHASE', 'TRANSFER', 'DISTRIBUTE'], 
+      enum: ['STOCK_ADD', 'ASSIGNED', 'USAGE', 'RETURNED', 'PAYMENT', 'PURCHASE', 'TRANSFER', 'DISTRIBUTE', 'DISTRIBUTE_PENDING'], 
     },
     
     jobId: { type: String },

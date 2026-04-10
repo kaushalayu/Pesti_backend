@@ -2,6 +2,7 @@ const Distribution = require('../models/Distribution');
 const Inventory = require('../models/Inventory');
 const User = require('../models/User');
 const InventoryTransaction = require('../models/InventoryTransaction');
+const Chemical = require('../models/Chemical');
 const AppError = require('../utils/AppError');
 const catchAsync = require('../utils/catchAsync');
 
@@ -37,7 +38,7 @@ exports.createDistribution = catchAsync(async (req, res, next) => {
     let sourceInv;
     
     if (isPeerToPeer) {
-      // Deduct from sender's inventory
+      // Deduct from sender's inventory (peer-to-peer is immediate)
       sourceInv = await Inventory.findOne({
         chemicalId: item.chemicalId,
         ownerId: fromUserId,
@@ -52,7 +53,8 @@ exports.createDistribution = catchAsync(async (req, res, next) => {
       sourceInv.totalValue = Math.round(sourceInv.quantity * sourceInv.transferRate * 100) / 100;
       await sourceInv.save();
     } else {
-      // Get from branch inventory
+      // Check branch inventory exists but DON'T deduct yet
+      // Deduction will happen when technician accepts
       sourceInv = await Inventory.findOne({
         chemicalId: item.chemicalId,
         ownerId: branchId,
@@ -62,30 +64,35 @@ exports.createDistribution = catchAsync(async (req, res, next) => {
       if (!sourceInv || sourceInv.quantity < item.quantity) {
         return next(new AppError(`Insufficient stock for ${item.chemicalId}`, 400));
       }
-      
-      sourceInv.quantity -= item.quantity;
-      sourceInv.totalValue = Math.round(sourceInv.quantity * sourceInv.transferRate * 100) / 100;
-      await sourceInv.save();
+      // Note: We don't deduct here, only check availability
     }
     
     const quantity = parseFloat(item.quantity) || 0;
+    const bottles = parseFloat(item.bottles) || 0;
     const rate = sourceInv.transferRate || 0;
     const value = Math.round(quantity * rate * 100) / 100;
+    
+    // Get chemical name from Chemical collection
+    const chemical = await Chemical.findById(item.chemicalId);
+    const chemicalName = chemical?.name || item.chemicalName || 'Unknown';
+    const category = chemical?.category || '';
     
     totalQty += quantity;
     totalValue += value;
     
     enrichedItems.push({
       chemicalId: item.chemicalId,
-      chemicalName: sourceInv.chemicalId?.name || item.chemicalName || 'Unknown',
-      category: sourceInv.chemicalId?.category || '',
+      chemicalName: chemicalName,
+      category: category,
       quantity: quantity,
       unit: item.unit || sourceInv.unit || 'L',
+      bottles: bottles,
       rate: rate,
       value: value
     });
   }
   
+  // For branch admin -> employee distribution, always set to PENDING (technician must accept)
   const distribution = await Distribution.create({
     branchId,
     fromUserId: isPeerToPeer ? fromUserId : null,
@@ -95,29 +102,28 @@ exports.createDistribution = catchAsync(async (req, res, next) => {
     totalValue: totalValue,
     notes: notes || '',
     distributedBy: req.user._id,
-    status: isPeerToPeer ? 'PENDING' : (req.body.fromUserId ? 'PENDING' : 'APPROVED'),
-    distributedAt: isPeerToPeer ? null : new Date()
+    status: 'PENDING', // Always PENDING - technician must accept
+    distributedAt: null // Will be set when technician accepts
   });
   
-  // Create transactions
-  if (!isPeerToPeer) {
-    for (const item of enrichedItems) {
-      await InventoryTransaction.create({
-        txnType: 'DISTRIBUTE_TO_EMPLOYEE',
-        chemicalId: item.chemicalId,
-        fromId: branchId,
-        fromType: 'Branch',
-        toId: employeeId,
-        toType: 'Employee',
-        quantity: item.quantity,
-        unit: item.unit,
-        unitPrice: item.rate,
-        totalValue: item.value,
-        type: 'DISTRIBUTE',
-        notes: `Distributed to ${employee.name}`,
-        performedBy: req.user._id
-      });
-    }
+  // Create pending transaction for visibility
+  for (const item of enrichedItems) {
+    await InventoryTransaction.create({
+      txnType: 'DISTRIBUTE_TO_EMPLOYEE',
+      chemicalId: item.chemicalId,
+      fromId: branchId,
+      fromType: 'Branch',
+      toId: employeeId,
+      toType: 'Employee',
+      quantity: item.quantity,
+      bottles: item.bottles || 0,
+      unit: item.unit,
+      unitPrice: item.rate,
+      totalValue: item.value,
+      type: 'DISTRIBUTE_PENDING',
+      notes: `Pending - Awaiting ${employee.name} acceptance`,
+      performedBy: req.user._id
+    });
   }
   
   await distribution.populate('employeeId', 'name employeeId');
@@ -149,7 +155,7 @@ exports.approveDistribution = catchAsync(async (req, res, next) => {
   
   const branchId = distribution.branchId;
   
-  // Deduct from branch inventory
+  // Deduct from branch inventory (including bottles)
   for (const item of distribution.items) {
     const branchInv = await Inventory.findOne({
       chemicalId: item.chemicalId,
@@ -162,6 +168,9 @@ exports.approveDistribution = catchAsync(async (req, res, next) => {
     }
     
     branchInv.quantity -= item.quantity;
+    if (item.bottles > 0) {
+      branchInv.bottles = Math.max(0, (branchInv.bottles || 0) - item.bottles);
+    }
     branchInv.totalValue = Math.round(branchInv.quantity * branchInv.transferRate * 100) / 100;
     await branchInv.save();
   }
@@ -176,6 +185,7 @@ exports.approveDistribution = catchAsync(async (req, res, next) => {
     
     if (empInv) {
       empInv.quantity += item.quantity;
+      empInv.bottles = (empInv.bottles || 0) + (item.bottles || 0);
       empInv.totalValue = Math.round(empInv.quantity * item.rate * 100) / 100;
       await empInv.save();
     } else {
@@ -188,6 +198,8 @@ exports.approveDistribution = catchAsync(async (req, res, next) => {
         unit: item.unit,
         displayQuantity: item.quantity,
         displayUnit: item.unit,
+        bottles: item.bottles || 0,
+        bottleSize: chem?.bottleSize || 1,
         transferRate: item.rate,
         totalValue: item.value,
         unitSystem: chem?.unitSystem || 'L'
@@ -205,6 +217,7 @@ exports.approveDistribution = catchAsync(async (req, res, next) => {
       toId: distribution.employeeId,
       toType: 'Employee',
       quantity: item.quantity,
+      bottles: item.bottles || 0,
       unit: item.unit,
       unitPrice: item.rate,
       totalValue: item.value,
@@ -257,13 +270,16 @@ exports.rejectDistribution = catchAsync(async (req, res, next) => {
 // @route   GET /api/employee-distributions
 // @access  Super Admin, Branch Admin
 exports.getDistributions = catchAsync(async (req, res, next) => {
-  const { page = 1, limit = 20, employeeId, startDate, endDate } = req.query;
+  const { page = 1, limit = 20, employeeId, startDate, endDate, branchId } = req.query;
   
   let query = {};
   
-  if (req.user.role === 'branch_admin' || req.user.role === 'office') {
-    const branchId = typeof req.user.branchId === 'object' ? req.user.branchId._id : req.user.branchId;
-    query.branchId = branchId;
+  // Super Admin sees all distributions (can filter by branchId)
+  if (req.user.role === 'super_admin') {
+    if (branchId) query.branchId = branchId;
+  } else if (req.user.role === 'branch_admin' || req.user.role === 'office') {
+    const userBranchId = typeof req.user.branchId === 'object' ? req.user.branchId._id : req.user.branchId;
+    query.branchId = userBranchId;
   }
   
   if (employeeId) query.employeeId = employeeId;

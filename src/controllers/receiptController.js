@@ -132,10 +132,19 @@ exports.createReceipt = catchAsync(async (req, res, next) => {
     formBranchId = typeof form.branchId === 'object' ? form.branchId._id : form.branchId;
   }
   
-  // Priority: body branchId > user branchId > form's branchId
-  payload.branchId = bodyBranchId || 
-    (userBranchId ? (typeof userBranchId === 'object' ? (userBranchId._id || userBranchId) : userBranchId) : null) ||
-    formBranchId;
+  // Extract branchId - normalize to string
+  const normalizeBranchId = (id) => {
+    if (!id) return null;
+    if (typeof id === 'object') return id._id || id.toString();
+    return id.toString();
+  };
+  
+  const normalizedFormBranchId = normalizeBranchId(formBranchId);
+  const normalizedBodyBranchId = normalizeBranchId(bodyBranchId);
+  const normalizedUserBranchId = normalizeBranchId(userBranchId);
+  
+  // Priority: body branchId (from form) > form's branchId > user branchId
+  payload.branchId = normalizedBodyBranchId || normalizedFormBranchId || normalizedUserBranchId;
   
   if (!payload.branchId) {
     return next(new AppError('Branch ID is required. Please select a branch.', 400));
@@ -168,7 +177,7 @@ exports.createReceipt = catchAsync(async (req, res, next) => {
         'billing.lastPaymentDate': new Date()
       });
       
-      console.log(`ServiceForm ${formId} billing updated: advance=${totalPaid}, due=${newBalanceDue}`);
+
     } catch (err) {
       console.error('Error updating ServiceForm billing:', err.message);
     }
@@ -925,7 +934,7 @@ exports.generateFromForm = catchAsync(async (req, res, next) => {
       });
     }
     
-    console.log(`ServiceForm ${formId} billing updated via generateFromForm: advance=${totalPaid}, due=${newBalanceDue}`);
+
   } catch (err) {
     console.error('Error updating ServiceForm billing:', err.message);
   }

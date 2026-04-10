@@ -13,6 +13,8 @@ const stockTransferRequestSchema = new mongoose.Schema(
     chemicalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chemical', required: true },
     quantity: { type: Number, required: true },
     unit: { type: String, default: 'L' },
+    bottles: { type: Number, default: 0 },
+    bottleSize: { type: String, default: '' },
     
     fromId: { type: mongoose.Schema.Types.ObjectId, required: true },
     fromType: { type: String, enum: ['super_admin', 'Branch'], required: true },

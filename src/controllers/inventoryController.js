@@ -979,11 +979,18 @@ exports.getBranchBalances = catchAsync(async (req, res, next) => {
 });
 
 exports.getMyBalance = catchAsync(async (req, res, next) => {
-  if (req.user.role !== "branch_admin" && req.user.role !== "office") {
+  let branchId = req.user.branchId;
+  
+  if (req.user.role === "super_admin" && req.query.branchId) {
+    branchId = req.query.branchId;
+  } else if (req.user.role !== "branch_admin" && req.user.role !== "office") {
     return next(new AppError("Only Branch Admin can view their balance", 403));
   }
-
-  const branch = await Branch.findById(req.user.branchId);
+  
+  if (!branchId) return next(new AppError("Branch not found", 404));
+  
+  const branch = await Branch.findById(branchId);
+  if (!branch) return next(new AppError("Branch not found", 404));
   if (!branch) return next(new AppError("Branch not found", 404));
 
   const payments = await Payment.find({ branchId: branch._id }).sort(

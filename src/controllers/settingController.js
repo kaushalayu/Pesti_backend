@@ -66,6 +66,8 @@ exports.getAttDropdowns = catchAsync(async (req, res) => {
   const preApplicationMethods = await Setting.findOne({ key: 'att_pre_application_methods' });
   const preBaseSolutions = await Setting.findOne({ key: 'att_pre_base_solutions' });
   const preChecklist = await Setting.findOne({ key: 'att_pre_checklist' });
+  const preSystemTypes = await Setting.findOne({ key: 'att_pre_system_types' });
+  const prePipeQuality = await Setting.findOne({ key: 'att_pre_pipe_quality' });
 
   const postTreatmentTypes = await Setting.findOne({ key: 'att_post_treatment_types' });
   const postChemicals = await Setting.findOne({ key: 'att_post_chemicals' });
@@ -80,6 +82,8 @@ exports.getAttDropdowns = catchAsync(async (req, res) => {
       preApplicationMethods: preApplicationMethods?.value || [],
       preBaseSolutions: preBaseSolutions?.value || [],
       preChecklist: preChecklist?.value || [],
+      preSystemTypes: ['Liner Pipe', 'Gride Pipe', 'Ring Pipe'],
+      prePipeQuality: prePipeQuality?.value || [],
       postTreatmentTypes: postTreatmentTypes?.value || [],
       postChemicals: postChemicals?.value || [],
       postApplicationMethods: postApplicationMethods?.value || [],
@@ -95,6 +99,7 @@ exports.updateAttDropdowns = catchAsync(async (req, res, next) => {
     preApplicationMethods,
     preBaseSolutions,
     preChecklist,
+    prePipeQuality,
     postTreatmentTypes,
     postChemicals,
     postApplicationMethods,
@@ -135,6 +140,13 @@ exports.updateAttDropdowns = catchAsync(async (req, res, next) => {
     updates.push(Setting.findOneAndUpdate(
       { key: 'att_pre_checklist' },
       { value: preChecklist, updatedBy: req.user._id, updatedAt: new Date() },
+      { upsert: true }
+    ));
+  }
+  if (prePipeQuality !== undefined) {
+    updates.push(Setting.findOneAndUpdate(
+      { key: 'att_pre_pipe_quality' },
+      { value: prePipeQuality, updatedBy: req.user._id, updatedAt: new Date() },
       { upsert: true }
     ));
   }

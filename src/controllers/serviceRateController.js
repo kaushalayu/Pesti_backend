@@ -5,14 +5,32 @@ const catchAsync = require('../utils/catchAsync');
 exports.createServiceRate = catchAsync(async (req, res, next) => {
   const { serviceName, category, premisesType, price, description, branchId } = req.body;
   
-  const existingRate = await ServiceRate.findOne({ 
+  // Check for active rate
+  const existingActive = await ServiceRate.findOne({ 
     serviceName, 
     category, 
-    branchId: branchId || null 
+    branchId: branchId || null,
+    isActive: true 
   });
   
-  if (existingRate) {
+  if (existingActive) {
     return next(new AppError('Rate already exists for this service/category combination', 400));
+  }
+
+  // Check for inactive rate and reactivate it
+  const existingInactive = await ServiceRate.findOne({ 
+    serviceName, 
+    category, 
+    branchId: branchId || null,
+    isActive: false 
+  });
+  
+  if (existingInactive) {
+    existingInactive.price = price;
+    existingInactive.isActive = true;
+    existingInactive.description = description || existingInactive.description;
+    await existingInactive.save();
+    return res.status(201).json({ success: true, data: existingInactive });
   }
 
   const rate = await ServiceRate.create({
@@ -21,7 +39,8 @@ exports.createServiceRate = catchAsync(async (req, res, next) => {
     premisesType: premisesType || 'General',
     price,
     description,
-    branchId: branchId || null
+    branchId: branchId || null,
+    isActive: true
   });
 
   res.status(201).json({ success: true, data: rate });
@@ -105,7 +124,7 @@ exports.deleteServiceRate = catchAsync(async (req, res, next) => {
 exports.getAllServiceRatesAdmin = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 50, category, branchId } = req.query;
   
-  const query = {};
+  const query = { isActive: true };
   if (category) query.category = category;
   if (branchId) query.branchId = branchId;
   

@@ -22,20 +22,11 @@ const convertToBaseUnit = (quantity, unit, chemicalUnit) => {
 };
 
 exports.createTransferRequest = catchAsync(async (req, res, next) => {
-  const { chemicalId, toId, toType, quantity, unit, notes, items } = req.body;
-
-  console.log("=== CREATE TRANSFER REQUEST ===");
-  console.log("User role:", req.user.role);
-  console.log("toId:", toId);
-  console.log("toType:", toType);
-  console.log("items:", JSON.stringify(items, null, 2));
-  console.log("chemicalId (single):", chemicalId);
+  const { chemicalId, toId, toType, quantity, unit, notes, items, bottles, bottleSize } = req.body;
 
   // Handle multiple items transfer
   const itemsToTransfer =
-    items || (chemicalId ? [{ chemicalId, quantity, unit }] : []);
-
-  console.log("itemsToTransfer:", JSON.stringify(itemsToTransfer, null, 2));
+    items || (chemicalId ? [{ chemicalId, quantity, unit, bottles, bottleSize }] : []);
 
   if (itemsToTransfer.length === 0) {
     return next(
@@ -64,17 +55,14 @@ exports.createTransferRequest = catchAsync(async (req, res, next) => {
       continue;
     }
 
+    const itemBottles = parseInt(item.bottles) || 0;
+    const itemBottleSize = item.bottleSize || '';
+
     const chemical = await Chemical.findById(item.chemicalId);
     if (!chemical) {
       errors.push(`Chemical not found with ID: ${item.chemicalId}`);
       continue;
     }
-
-    console.log("Processing transfer:", {
-      chemicalName: chemical.name,
-      quantity: qty,
-      mainStock: chemical.mainStock,
-    });
 
     const baseQuantity = convertToBaseUnit(
       qty,
@@ -146,6 +134,8 @@ exports.createTransferRequest = catchAsync(async (req, res, next) => {
       chemicalId: item.chemicalId,
       quantity: baseQuantity,
       unit: chemical.unitSystem,
+      bottles: itemBottles,
+      bottleSize: itemBottleSize || chemical.bottleSize || '',
       fromId,
       fromType,
       toId,
@@ -161,8 +151,6 @@ exports.createTransferRequest = catchAsync(async (req, res, next) => {
   }
 
   if (createdRequests.length === 0) {
-    console.log("=== TRANSFER ERROR ===");
-    console.log("Errors:", errors);
     return next(
       new AppError(errors.join(", ") || "No valid items to transfer", 400),
     );
@@ -182,16 +170,12 @@ exports.getTransferRequests = catchAsync(async (req, res, next) => {
   let txnTypeFilter = req.query.txnType || null;
 
   if (req.user.role === "super_admin") {
-    baseQuery = {}; // Super admin sees all transfers
+    baseQuery = {};
   } else if (req.user.role === "branch_admin" || req.user.role === "office") {
     const branchId =
       typeof req.user.branchId === "object"
         ? req.user.branchId._id
         : req.user.branchId;
-    console.log("Branch Admin checking transfers for branchId:", branchId);
-    // Branch Admin should see:
-    // 1. Transfers TO their branch (SUPER_TO_BRANCH where toId = branchId)
-    // 2. Transfers FROM their branch to employees (BRANCH_TO_EMPLOYEE where fromId = branchId)
     baseQuery = {
       $or: [
         {
@@ -213,10 +197,6 @@ exports.getTransferRequests = catchAsync(async (req, res, next) => {
   } else {
     baseQuery = { requestedBy: req.user._id };
   }
-
-  console.log("=== GET TRANSFER REQUESTS ===");
-  console.log("User role:", req.user.role);
-  console.log("Final query:", JSON.stringify(baseQuery, null, 2));
 
   // Build the final query
   let finalQuery = { ...baseQuery };
@@ -257,6 +237,8 @@ exports.getTransferRequests = catchAsync(async (req, res, next) => {
     chemicalName: req.chemicalId?.name,
     quantity: req.quantity,
     unit: req.unit,
+    bottles: req.bottles,
+    bottleSize: req.bottleSize,
     purchaseRate: req.purchaseRate,
     transferRate: req.transferRate,
     totalValue: req.totalValue,
@@ -317,7 +299,15 @@ exports.approveTransferRequest = catchAsync(async (req, res, next) => {
       return next(new AppError("Insufficient stock at HQ", 400));
     }
 
+    const requestBottles = request.bottles || 0;
+    if (requestBottles > 0 && chemical.bottles < requestBottles) {
+      return next(new AppError(`Insufficient bottles at HQ. Available: ${chemical.bottles}`, 400));
+    }
+
     chemical.mainStock -= baseQuantity;
+    if (requestBottles > 0) {
+      chemical.bottles -= requestBottles;
+    }
     await chemical.save();
 
     let branchInv = await Inventory.findOne({
@@ -327,6 +317,10 @@ exports.approveTransferRequest = catchAsync(async (req, res, next) => {
     });
     if (branchInv) {
       branchInv.quantity += baseQuantity;
+      if (requestBottles > 0) {
+        branchInv.bottles = (branchInv.bottles || 0) + requestBottles;
+        branchInv.bottleSize = request.bottleSize || branchInv.bottleSize || chemical.bottleSize || '';
+      }
       branchInv.totalValue =
         Math.round(branchInv.quantity * branchInv.transferRate * 100) / 100;
       branchInv.originalQuantity += baseQuantity;
@@ -338,6 +332,8 @@ exports.approveTransferRequest = catchAsync(async (req, res, next) => {
         ownerType: "Branch",
         quantity: baseQuantity,
         unit: chemical.unitSystem,
+        bottles: requestBottles,
+        bottleSize: request.bottleSize || chemical.bottleSize || '',
         transferRate: request.transferRate,
         unitPrice: request.transferRate,
         totalValue: request.totalValue,
@@ -362,6 +358,7 @@ exports.approveTransferRequest = catchAsync(async (req, res, next) => {
       toType: "Branch",
       quantity: baseQuantity,
       unit: chemical.unitSystem,
+      bottles: requestBottles,
       purchaseRate: chemical.purchasePrice,
       transferRate: request.transferRate,
       unitPrice: request.transferRate,
@@ -404,7 +401,15 @@ exports.approveTransferRequest = catchAsync(async (req, res, next) => {
       return next(new AppError("Insufficient stock at branch", 400));
     }
 
+    const empBottles = request.bottles || 0;
+    if (empBottles > 0 && (!branchInv.bottles || branchInv.bottles < empBottles)) {
+      return next(new AppError(`Insufficient bottles at branch. Available: ${branchInv.bottles || 0}`, 400));
+    }
+
     branchInv.quantity -= baseQuantity;
+    if (empBottles > 0) {
+      branchInv.bottles -= empBottles;
+    }
     await branchInv.save();
 
     let empInv = await Inventory.findOne({
@@ -414,6 +419,10 @@ exports.approveTransferRequest = catchAsync(async (req, res, next) => {
     });
     if (empInv) {
       empInv.quantity += baseQuantity;
+      if (empBottles > 0) {
+        empInv.bottles = (empInv.bottles || 0) + empBottles;
+        empInv.bottleSize = request.bottleSize || empInv.bottleSize || '';
+      }
       empInv.totalValue =
         Math.round(empInv.quantity * empInv.transferRate * 100) / 100;
       empInv.originalQuantity += baseQuantity;
@@ -425,6 +434,8 @@ exports.approveTransferRequest = catchAsync(async (req, res, next) => {
         ownerType: "Employee",
         quantity: baseQuantity,
         unit: chemical.unitSystem,
+        bottles: empBottles,
+        bottleSize: request.bottleSize || '',
         transferRate: 0,
         unitPrice: 0,
         totalValue: 0,
@@ -442,6 +453,7 @@ exports.approveTransferRequest = catchAsync(async (req, res, next) => {
       toType: "Employee",
       quantity: baseQuantity,
       unit: chemical.unitSystem,
+      bottles: empBottles,
       purchaseRate: chemical.purchasePrice,
       transferRate: request.transferRate,
       unitPrice: request.transferRate,

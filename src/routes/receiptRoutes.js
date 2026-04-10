@@ -15,15 +15,18 @@ const {
   rejectReceipt,
 } = require('../controllers/receiptController');
 const { protect, restrictTo } = require('../middleware/auth');
+const multer = require('multer');
 
 const router = express.Router();
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(protect);
 
 router.get('/stats', getReceiptStats);
 router.get('/pending', getPendingApprovals);
 
-router.post('/', createReceipt);
+router.post('/', upload.any(), createReceipt);
 router.post('/from-form/:formId', generateFromForm);
 
 router.route('/')
