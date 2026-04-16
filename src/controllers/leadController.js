@@ -351,45 +351,42 @@ exports.convertLead = catchAsync(async (req, res, next) => {
 // @route   GET /api/leads/followups
 // @access  Private
 exports.getFollowUps = catchAsync(async (req, res, next) => {
-  const queryObj = { ...req.query };
-  const excludedFields = ['page', 'sort', 'limit', 'fields'];
-  excludedFields.forEach((el) => delete queryObj[el]);
+  const queryObj = {};
 
   // Role Filtering
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
     const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
     if (branchId) {
-      queryObj.branchId = branchId;
+      queryObj.branchId = new mongoose.Types.ObjectId(branchId);
     }
   } else if (req.user.role === 'technician' || req.user.role === 'sales') {
-    queryObj.assignedTo = req.user._id;
+    queryObj.assignedTo = new mongoose.Types.ObjectId(req.user._id);
   }
 
   // Handle followUpDue filter
-  const { followUpDue } = req.query;
+  const { followUpDue, status } = req.query;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
+  // Status filter
+  if (status && status !== 'ALL') {
+    queryObj.status = status;
+  }
+
+  // Follow-up date filter
   if (followUpDue === 'overdue') {
-    queryObj.nextFollowUp = { $lt: today, $ne: null };
+    queryObj.nextFollowUp = { $lt: today };
   } else if (followUpDue === 'today') {
     queryObj.nextFollowUp = { $gte: today, $lt: tomorrow };
   } else if (followUpDue === 'upcoming') {
     queryObj.nextFollowUp = { $gte: tomorrow };
-  } else {
-    // Default: show leads with any nextFollowUp set (including all statuses)
-    queryObj.nextFollowUp = { $ne: null };
   }
-
-  // Also allow leads without nextFollowUp when followUpDue is 'all' or not set
-  if (followUpDue === 'all' || !followUpDue) {
-    delete queryObj.nextFollowUp;
-  }
+  // For 'all' or undefined, show ALL leads (no nextFollowUp filter)
 
   let query = Lead.find(queryObj)
-    .select('name phone city status priority nextFollowUp branchId assignedTo serviceInterest budget leadScore followups')
+    .select('name phone city status priority nextFollowUp lastContactedAt createdAt branchId assignedTo serviceInterest budget requirement propertyType source leadScore followups')
     .populate('assignedTo', 'name employeeId')
     .populate('branchId', 'branchName branchCode');
 
