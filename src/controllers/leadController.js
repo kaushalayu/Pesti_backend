@@ -36,15 +36,16 @@ exports.getLeads = catchAsync(async (req, res, next) => {
   excludedFields.forEach((el) => delete queryObj[el]);
 
   // Role Filtering:
-  // super_admin  → all leads
-  // branch_admin / office → only their branch leads
+  // super_admin / office → all leads
+  // branch_admin → only their branch leads
   // sales / technician → only leads assigned to them
-  if (req.user.role === 'branch_admin' || req.user.role === 'office') {
+  if (req.user.role === 'branch_admin') {
     const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
     if (branchId) queryObj.branchId = branchId;
   } else if (req.user.role === 'sales' || req.user.role === 'technician') {
     queryObj.assignedTo = req.user._id;
   }
+  // super_admin and office can see all leads (no filter)
 
   // Filter: assignedToMe (for non-admin users to see only their leads)
   if (req.query.assignedToMe === 'true') {
@@ -122,13 +123,14 @@ exports.getLead = catchAsync(async (req, res, next) => {
     if (lead.assignedTo?._id?.toString() !== req.user._id.toString()) {
       return next(new AppError('Permission Denied - You can only view your assigned leads', 403));
     }
-  } else if (req.user.role === 'branch_admin' || req.user.role === 'office') {
+  } else if (req.user.role === 'branch_admin') {
     const leadBranchId = lead.branchId?._id?.toString() || lead.branchId?.toString();
     const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
     if (leadBranchId !== userBranchId) {
       return next(new AppError('Permission Denied', 403));
     }
   }
+  // super_admin and office can view any lead
 
   res.status(200).json({
     success: true,
@@ -143,7 +145,7 @@ exports.updateLead = catchAsync(async (req, res, next) => {
   const lead = await Lead.findById(req.params.id);
   if (!lead) return next(new AppError('No lead found with that ID', 404));
 
-  // Branch admin can only update leads in their branch
+  // Branch admin / office can update leads in their branch
   if (req.user.role === 'branch_admin' || req.user.role === 'office') {
     const leadBranchId = lead.branchId?._id?.toString() || lead.branchId?.toString();
     const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString();
@@ -153,6 +155,7 @@ exports.updateLead = catchAsync(async (req, res, next) => {
       return next(new AppError('You can only update your assigned leads', 403));
     }
   }
+  // super_admin can update any lead
 
   // Core lead details are LOCKED after creation - only these fields allowed
   const allowedUpdates = ['notes', 'requirement', 'nextFollowUp'];
@@ -174,7 +177,7 @@ exports.updateLead = catchAsync(async (req, res, next) => {
 
 // @desc    Assign Lead to User/Branch
 // @route   POST /api/leads/:id/assign
-// @access  Private (super_admin, branch_admin, sales)
+// @access  Private (super_admin, branch_admin, office, sales)
 exports.assignLead = catchAsync(async (req, res, next) => {
   const { assignedTo, branchId } = req.body;
 
@@ -190,8 +193,8 @@ exports.assignLead = catchAsync(async (req, res, next) => {
     );
   }
 
-  if (req.user.role === 'super_admin') {
-    // Super admin: any branch, any user
+  if (req.user.role === 'super_admin' || req.user.role === 'office') {
+    // Super admin / Office: any branch, any user
     if (branchId) lead.branchId = branchId;
     if (assignedTo) {
       const user = await User.findById(assignedTo);
@@ -275,9 +278,9 @@ exports.addFollowUp = catchAsync(async (req, res, next) => {
   const lead = await Lead.findById(req.params.id);
   if (!lead) return next(new AppError('No lead found with that ID', 404));
 
-  // Permission: super_admin → any lead | branch_admin/office → branch leads | sales/technician → assigned leads
-  if (req.user.role !== 'super_admin') {
-    if (req.user.role === 'branch_admin' || req.user.role === 'office') {
+  // Permission: super_admin → any lead | branch_admin → branch leads | sales/technician → assigned leads | office → all leads
+  if (req.user.role !== 'super_admin' && req.user.role !== 'office') {
+    if (req.user.role === 'branch_admin') {
       const leadBranchId = lead.branchId?._id?.toString() || lead.branchId?.toString();
       const userBranchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString();
       if (leadBranchId !== userBranchId) return next(new AppError('Permission Denied', 403));
@@ -354,7 +357,7 @@ exports.getFollowUps = catchAsync(async (req, res, next) => {
   const queryObj = {};
 
   // Role Filtering
-  if (req.user.role === 'branch_admin' || req.user.role === 'office') {
+  if (req.user.role === 'branch_admin') {
     const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString() || req.user.branchId;
     if (branchId) {
       queryObj.branchId = new mongoose.Types.ObjectId(branchId);
@@ -362,6 +365,7 @@ exports.getFollowUps = catchAsync(async (req, res, next) => {
   } else if (req.user.role === 'technician' || req.user.role === 'sales') {
     queryObj.assignedTo = new mongoose.Types.ObjectId(req.user._id);
   }
+  // super_admin and office can see all leads (no filter)
 
   // Handle followUpDue filter
   const { followUpDue, status } = req.query;
@@ -426,9 +430,9 @@ exports.deleteLead = catchAsync(async (req, res, next) => {
 exports.getLeadStats = catchAsync(async (req, res, next) => {
   let matchObj = {};
 
-  if (req.user.role === 'super_admin') {
+  if (req.user.role === 'super_admin' || req.user.role === 'office') {
     matchObj = {}; // all leads
-  } else if (req.user.role === 'branch_admin' || req.user.role === 'office') {
+  } else if (req.user.role === 'branch_admin') {
     const branchId = req.user.branchId?._id?.toString() || req.user.branchId?.toString();
     if (branchId) matchObj.branchId = new mongoose.Types.ObjectId(branchId);
   } else if (req.user.role === 'sales' || req.user.role === 'technician') {

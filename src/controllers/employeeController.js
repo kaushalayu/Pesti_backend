@@ -61,16 +61,18 @@ exports.createEmployee = catchAsync(async (req, res, next) => {
 
 // @desc    Get all employees
 // @route   GET /api/employees
-// @access  Private (Super Admin / Branch Admin)
+// @access  Private (Super Admin / Branch Admin / Office)
 exports.getEmployees = catchAsync(async (req, res, next) => {
   const queryObj = { ...req.query };
   const excludedFields = ['page', 'sort', 'limit', 'fields'];
   excludedFields.forEach((el) => delete queryObj[el]);
 
   // Branch Admins can ONLY see employees in their branch
+  // Office can see all employees for lead assignment
   if (req.user.role === 'branch_admin') {
     queryObj.branchId = req.user.branchId;
   }
+  // super_admin and office see all employees (no filter)
 
   // Handle case-insensitive search by name
   if (queryObj.name) {
@@ -98,7 +100,7 @@ exports.getEmployees = catchAsync(async (req, res, next) => {
 
 // @desc    Get single employee
 // @route   GET /api/employees/:id
-// @access  Private (Super Admin / Branch Admin)
+// @access  Private (Super Admin / Branch Admin / Office)
 exports.getEmployee = catchAsync(async (req, res, next) => {
   const employee = await User.findById(req.params.id).populate('branchId', 'branchName branchCode city');
 

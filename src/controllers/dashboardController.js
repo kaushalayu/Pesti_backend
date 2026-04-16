@@ -11,16 +11,16 @@ const cache = require('../utils/cache');
 
 // Helper to filter by branch if needed
 const getBranchFilter = (req) => {
-  if (req.user.role === 'super_admin') return {};
-  if (req.user.role === 'branch_admin' || req.user.role === 'office') return { branchId: req.user.branchId };
+  if (req.user.role === 'super_admin' || req.user.role === 'office') return {};
+  if (req.user.role === 'branch_admin') return { branchId: req.user.branchId };
   if (req.user.role === 'technician' || req.user.role === 'sales') return { employeeId: req.user._id };
   return { branchId: req.user.branchId };
 };
 
 // Lead filter per role
 const getLeadFilter = (req) => {
-  if (req.user.role === 'super_admin') return {};
-  if (req.user.role === 'branch_admin' || req.user.role === 'office') return { branchId: req.user.branchId };
+  if (req.user.role === 'super_admin' || req.user.role === 'office') return {};
+  if (req.user.role === 'branch_admin') return { branchId: req.user.branchId };
   if (req.user.role === 'sales' || req.user.role === 'technician') return { assignedTo: req.user._id };
   return {};
 };
@@ -278,8 +278,8 @@ exports.getCombinedDashboard = catchAsync(async (req, res, next) => {
   let branchFilter = getBranchFilter(req);
   let leadFilter = getLeadFilter(req);
   
-  // Super admin can filter by specific branch
-  if (req.user.role === 'super_admin' && req.query.branchId) {
+  // Super admin and office can filter by specific branch
+  if ((req.user.role === 'super_admin' || req.user.role === 'office') && req.query.branchId) {
     const branchId = req.query.branchId;
     branchFilter = { branchId: new mongoose.Types.ObjectId(branchId) };
     leadFilter = { branchId: new mongoose.Types.ObjectId(branchId) };
