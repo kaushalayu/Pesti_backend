@@ -20,11 +20,29 @@ const getCompanySettings = async () => {
 const getLogoBase64 = async () => {
   try {
     const settings = await getCompanySettings();
-    if (settings?.logo && settings.logo.startsWith('data:')) {
-      return settings.logo;
-    }
-    if (settings?.logo && settings.logo.startsWith('http')) {
-      return settings.logo;
+    if (settings?.logo) {
+      // Base64 image
+      if (settings.logo.startsWith('data:')) {
+        return settings.logo;
+      }
+      // URL (http/https)
+      if (settings.logo.startsWith('http')) {
+        return settings.logo;
+      }
+      // Uploaded file (local path)
+      if (settings.logo.startsWith('/uploads/')) {
+        const fullPath = path.join(__dirname, '../..', settings.logo);
+        if (fs.existsSync(fullPath)) {
+          const buffer = fs.readFileSync(fullPath);
+          const ext = path.extname(settings.logo).toLowerCase();
+          const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+          return `data:${mimeType};base64,${buffer.toString("base64")}`;
+        }
+      }
+      // Legacy check for very long strings
+      if (settings.logo.length > 100) {
+        return settings.logo;
+      }
     }
     if (fs.existsSync(LOGO_PATH)) {
       const imgBuffer = fs.readFileSync(LOGO_PATH);

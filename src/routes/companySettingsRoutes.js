@@ -4,11 +4,12 @@ const {
   updateCompanySettings
 } = require('../controllers/companySettingsController');
 const { protect, restrictTo } = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
 const router = express.Router();
 
 router.use(protect);
 router.get('/', getCompanySettings);
-router.put('/', restrictTo('super_admin'), updateCompanySettings);
+router.put('/', restrictTo('super_admin'), upload.single('logo'), updateCompanySettings);
 
 module.exports = router;

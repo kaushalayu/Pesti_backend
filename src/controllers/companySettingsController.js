@@ -15,10 +15,17 @@ const getCompanySettings = catchAsync(async (req, res) => {
 });
 
 const updateCompanySettings = catchAsync(async (req, res) => {
+  let updateData = { ...req.body };
+  
+  // Handle file upload for logo
+  if (req.file) {
+    updateData.logo = `/uploads/${req.file.filename}`;
+  }
+  
   const settings = await CompanySettings.findOne();
   
   if (!settings) {
-    const newSettings = await CompanySettings.create(req.body);
+    const newSettings = await CompanySettings.create(updateData);
     return res.status(201).json({
       status: 'success',
       data: newSettings
@@ -27,7 +34,7 @@ const updateCompanySettings = catchAsync(async (req, res) => {
   
   const updatedSettings = await CompanySettings.findByIdAndUpdate(
     settings._id,
-    req.body,
+    updateData,
     { returnDocument: 'after', runValidators: true }
   );
   
